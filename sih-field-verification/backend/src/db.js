@@ -67,6 +67,15 @@ db.exec(`
     received_at           TEXT NOT NULL,
     created_at            TEXT DEFAULT CURRENT_TIMESTAMP,
 
+    -- Ground truth, filled in later once a lab confirms the sample (or a
+    -- supervisor reviews it). Deliberately NOT part of the signed payload -
+    -- adding it later must never be able to change what was signed at
+    -- capture time. This is what lets the system report real accuracy
+    -- instead of just citing the model vendor's benchmark numbers.
+    confirmed_result       TEXT CHECK (confirmed_result IN ('positive','negative','inconclusive')),
+    confirmed_at           TEXT,
+    confirmed_by           TEXT,
+
     FOREIGN KEY (operator_id) REFERENCES operators(user_id)
   );
 
@@ -92,6 +101,9 @@ addColumnIfMissing("classification_method", "TEXT DEFAULT 'heuristic'");
 addColumnIfMissing("ml_scores", "TEXT");
 addColumnIfMissing("needs_review", "INTEGER DEFAULT 0");
 addColumnIfMissing("location_acknowledged", "INTEGER DEFAULT 0");
+addColumnIfMissing("confirmed_result", "TEXT");
+addColumnIfMissing("confirmed_at", "TEXT");
+addColumnIfMissing("confirmed_by", "TEXT");
 
 // Self-seed a default operator on first boot so the app is runnable immediately.
 // Password is bcrypt-hashed (12 salt rounds) before it ever touches the database.

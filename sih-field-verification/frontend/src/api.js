@@ -84,4 +84,18 @@ export const api = {
   verifyScan(recordId) {
     return request(`/scans/${encodeURIComponent(recordId)}/verify`);
   },
+
+  // Records ground truth once it's known (lab confirmation / supervisor
+  // review), so real accuracy can be tracked over time. Never touches the
+  // signed fields on the record.
+  confirmScan(recordId, confirmedResult) {
+    return request(`/scans/${encodeURIComponent(recordId)}/confirm`, {
+      method: "PATCH",
+      body: { confirmedResult },
+    });
+  },
+
+  getAccuracyStats() {
+    return request("/scans/stats/accuracy");
+  },
 };

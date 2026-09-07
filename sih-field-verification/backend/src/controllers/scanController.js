@@ -57,6 +57,9 @@ function formatScan(row) {
     signature: row.signature,
     capturedAt: row.captured_at,
     receivedAt: row.received_at,
+    confirmed: row.confirmed_result
+      ? { result: row.confirmed_result, at: row.confirmed_at, by: row.confirmed_by }
+      : null,
   };
 }
 
@@ -280,4 +283,73 @@ function verifyScan(req, res) {
   });
 }
 
-module.exports = { createScan, listScans, getScan, getScanImage, verifyScan };
+// Records ground truth for a scan once it's known - typically after a lab
+// confirms the sample, or a supervisor reviews a flagged record. This is
+// intentionally a separate write path from createScan: it never touches
+// result/signature/image_hash, so a record's signature still attests only
+// to what was captured and computed at the time of the field test. Without
+// this, "classifier accuracy" is just a claim about the model on someone
+// else's benchmark, not about this kit under real field conditions.
+function confirmScan(req, res) {
+  const { confirmedResult } = req.body || {};
+  if (!RESULT_CATEGORIES.includes(confirmedResult)) {
+    return res.status(400).json({ error: `confirmedResult must be one of: ${RESULT_CATEGORIES.join(", ")}` });
+  }
+  const row = db.prepare("SELECT record_id FROM scans WHERE record_id = ?").get(req.params.recordId);
+  if (!row) return res.status(404).json({ error: "Record not found." });
+
+  db.prepare(
+    "UPDATE scans SET confirmed_result = ?, confirmed_at = ?, confirmed_by = ? WHERE record_id = ?"
+  ).run(confirmedResult, new Date().toISOString(), req.operator.userId, req.params.recordId);
+
+  const updated = db.prepare("SELECT * FROM scans WHERE record_id = ?").get(req.params.recordId);
+  res.json({ scan: formatScan(updated) });
+}
+
+// Accuracy report computed from confirmed (ground-truth) records only, split
+// by which classifier produced the signed result. Empty/near-empty results
+// are expected and reported honestly (see ml-service/evaluate.py for how to
+// get a first accuracy number from a labelled photo set before real
+// confirmations have accumulated).
+function getAccuracyStats(req, res) {
+  const rows = db.prepare(
+    "SELECT result, classification_method, confirmed_result FROM scans WHERE confirmed_result IS NOT NULL"
+  ).all();
+
+  const byMethod = {};
+  for (const row of rows) {
+    const method = row.classification_method || "unknown";
+    if (!byMethod[method]) {
+      byMethod[method] = {
+        method,
+        total: 0,
+        correct: 0,
+        confusionMatrix: Object.fromEntries(
+          RESULT_CATEGORIES.map((actual) => [
+            actual,
+            Object.fromEntries(RESULT_CATEGORIES.map((predicted) => [predicted, 0])),
+          ])
+        ),
+      };
+    }
+    const bucket = byMethod[method];
+    bucket.total += 1;
+    if (row.result === row.confirmed_result) bucket.correct += 1;
+    if (bucket.confusionMatrix[row.confirmed_result] && row.result in bucket.confusionMatrix[row.confirmed_result]) {
+      bucket.confusionMatrix[row.confirmed_result][row.result] += 1;
+    }
+  }
+
+  const methods = Object.values(byMethod).map((b) => ({
+    ...b,
+    accuracy: b.total ? Number(((b.correct / b.total) * 100).toFixed(1)) : null,
+  }));
+
+  res.json({
+    confirmedCount: rows.length,
+    methods,
+    note: "Confusion matrix rows = confirmed (ground-truth) category, columns = predicted category.",
+  });
+}
+
+module.exports = { createScan, listScans, getScan, getScanImage, verifyScan, confirmScan, getAccuracyStats };

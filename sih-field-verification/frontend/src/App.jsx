@@ -166,7 +166,55 @@ function ResultBadge({ result, size = "md" }) {
   );
 }
 
-function ScanCard({ scan }) {
+// Lets an operator/supervisor record the eventual ground truth for a scan
+// (lab confirmation, or reviewed outcome) so the app can report real
+// accuracy over time instead of just a design rationale for why it doesn't
+// have one yet. This is a separate, later write - it never touches the
+// signed result/signature on the record (see backend confirmScan).
+function ConfirmRow({ scan, onConfirmed }) {
+  const [saving, setSaving] = useState(null); // which category is in-flight
+
+  if (scan.confirmed) {
+    return (
+      <div className="scan-card-confirm confirmed">
+        <ShieldCheck size={11} />
+        Confirmed: {CATEGORY[scan.confirmed.result]?.label || scan.confirmed.result}
+      </div>
+    );
+  }
+
+  const confirm = async (category) => {
+    setSaving(category);
+    try {
+      const { scan: updated } = await api.confirmScan(scan.recordId, category);
+      onConfirmed(updated);
+    } catch (e) {
+      // silent - operator can retry; this is a secondary/audit action
+    } finally {
+      setSaving(null);
+    }
+  };
+
+  return (
+    <div className="scan-card-confirm">
+      <span className="scan-card-confirm-label">Confirm actual result:</span>
+      <div className="scan-card-confirm-buttons">
+        {Object.keys(CATEGORY).map((key) => (
+          <button
+            key={key}
+            className="confirm-chip"
+            disabled={saving !== null}
+            onClick={() => confirm(key)}
+          >
+            {saving === key ? <Loader2 size={11} className="spin" /> : CATEGORY[key].label}
+          </button>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+function ScanCard({ scan, onConfirmed }) {
   const c = CATEGORY[scan.result] || CATEGORY.inconclusive;
   const thumb = useAuthedImageUrl(scan.recordId);
   return (
@@ -190,6 +238,7 @@ function ScanCard({ scan }) {
         {scan.needsReview && (
           <div className="scan-card-flag"><AlertOctagon size={11} /> Needs review</div>
         )}
+        <ConfirmRow scan={scan} onConfirmed={onConfirmed} />
       </div>
     </div>
   );
@@ -651,6 +700,44 @@ function ReportCard({ record }) {
   );
 }
 
+// Small summary of real-world accuracy computed from confirmed
+// (ground-truth) records only - see backend getAccuracyStats. Shows nothing
+// misleading when there's no confirmed data yet; the empty state is itself
+// the honest answer to "what's your accuracy".
+function AccuracySummary() {
+  const [stats, setStats] = useState(null);
+
+  useEffect(() => {
+    let cancelled = false;
+    api.getAccuracyStats().then((data) => { if (!cancelled) setStats(data); }).catch(() => {});
+    return () => { cancelled = true; };
+  }, []);
+
+  if (!stats) return null;
+  if (stats.confirmedCount === 0) {
+    return (
+      <div className="accuracy-summary empty">
+        <AlertOctagon size={12} />
+        No records confirmed against ground truth yet — accuracy will appear here
+        once lab-confirmed results are recorded on scans.
+      </div>
+    );
+  }
+
+  return (
+    <div className="accuracy-summary">
+      {stats.methods.map((m) => (
+        <div key={m.method} className="accuracy-row">
+          <span className="accuracy-method">
+            {m.method === "pretrained-clip" ? "Pretrained CLIP" : m.method === "heuristic" ? "Heuristic fallback" : m.method}
+          </span>
+          <span className="accuracy-value">{m.accuracy}% <span className="muted">({m.correct}/{m.total} confirmed)</span></span>
+        </div>
+      ))}
+    </div>
+  );
+}
+
 function LogScreen({ onBack }) {
   const [query, setQuery] = useState("");
   const [scans, setScans] = useState([]);
@@ -668,12 +755,17 @@ function LogScreen({ onBack }) {
     return () => { cancelled = true; clearTimeout(t); };
   }, [query]);
 
+  const handleConfirmed = (updated) => {
+    setScans((prev) => prev.map((s) => (s.recordId === updated.recordId ? updated : s)));
+  };
+
   return (
     <div className="screen log-screen">
       <div className="log-topbar">
         <button className="icon-btn" onClick={onBack} aria-label="Back"><ChevronLeft size={18} /></button>
         <h2>Test log</h2>
       </div>
+      <AccuracySummary />
       <div className="search-real">
         <Search size={15} />
         <input
@@ -687,7 +779,7 @@ function LogScreen({ onBack }) {
         {!loading && scans.length === 0 && (
           <div className="empty-state"><Search size={20} strokeWidth={1.6} /><p>No matching records.</p></div>
         )}
-        {!loading && scans.map((s) => <ScanCard key={s.recordId} scan={s} />)}
+        {!loading && scans.map((s) => <ScanCard key={s.recordId} scan={s} onConfirmed={handleConfirmed} />)}
       </div>
     </div>
   );
@@ -985,6 +1077,28 @@ const CSS = `
 .scan-card-meta { display: flex; align-items: center; gap: 5px; font-size: 11.5px; color: var(--text); }
 .scan-card-meta.muted { color: var(--muted); }
 .scan-card-flag { display: flex; align-items: center; gap: 5px; font-size: 11px; color: var(--amber); font-weight: 600; margin-top: 2px; }
+
+.scan-card-confirm { margin-top: 6px; }
+.scan-card-confirm.confirmed { display: flex; align-items: center; gap: 5px; font-size: 11px; color: var(--teal); font-weight: 600; }
+.scan-card-confirm-label { display: block; font-size: 10.5px; color: var(--muted); margin-bottom: 5px; }
+.scan-card-confirm-buttons { display: flex; gap: 6px; }
+.confirm-chip {
+  flex: 1; background: var(--panel-2); border: 1px solid var(--line); border-radius: 7px;
+  padding: 5px 6px; font-size: 10.5px; color: var(--text); font-family: inherit; cursor: pointer;
+  display: flex; align-items: center; justify-content: center; min-height: 22px;
+}
+.confirm-chip:disabled { opacity: 0.6; cursor: default; }
+
+.accuracy-summary {
+  display: flex; flex-direction: column; gap: 6px; background: var(--panel);
+  border: 1px solid var(--line); border-radius: 10px; padding: 10px 12px; margin-bottom: 14px;
+  font-size: 12px;
+}
+.accuracy-summary.empty { flex-direction: row; align-items: flex-start; gap: 7px; color: var(--muted); line-height: 1.5; }
+.accuracy-row { display: flex; align-items: center; justify-content: space-between; }
+.accuracy-method { color: var(--muted); }
+.accuracy-value { font-family: 'IBM Plex Mono', monospace; font-weight: 600; }
+.accuracy-value .muted { font-weight: 400; color: var(--muted); }
 
 .empty-state {
   display: flex; flex-direction: column; align-items: center; gap: 10px;

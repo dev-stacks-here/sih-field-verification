@@ -47,6 +47,15 @@ tamper-evident digital record with timestamp, GPS location, and operator ID.
   GPS fix can't silently masquerade as a real one.
 - **Searchable log** — `GET /api/scans` supports free-text search and
   filtering by result / review status.
+- **Ground-truth confirmation & accuracy tracking** — any scan can later be
+  marked with a `confirmed_result` (lab confirmation or supervisor review)
+  via `PATCH /api/scans/:recordId/confirm`, from the log screen in the UI.
+  This is stored outside the signed payload, so confirming a result later
+  never alters what was signed at capture time. `GET /api/scans/stats/accuracy`
+  aggregates confirmed scans into a live accuracy/confusion-matrix report per
+  classifier. `ml-service/evaluate.py` does the same thing offline against a
+  labelled photo folder, for a number you can cite before real confirmations
+  have accumulated — see `ml-service/README.md`.
 
 ## Project layout
 
@@ -110,6 +119,10 @@ demoable.
   bands. The calibrated heuristic fallback has the same limitation in the
   other direction: it's hand-tuned constants, not learned from data.
   Keeping both, and flagging disagreement between them, is the mitigation.
+  **Before presenting this**, run `ml-service/evaluate.py` against a small
+  set of real, labelled kit photos and cite that number — see
+  `ml-service/README.md` → "Accuracy" for the exact steps and a synthetic
+  fallback set to sanity-check the harness in the meantime.
 - `needsReview` disagreement is judged at the *category* level (client sent
   one bucket, server computed another) because the client only sends its
   proposed category, not its raw sampled colour. A stricter version would
