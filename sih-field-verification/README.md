@@ -8,7 +8,9 @@ tamper-evident digital record with timestamp, GPS location, and operator ID.
 ## What's implemented
 
 - **Capture** — camera view with an on-screen guide for the vial + reference
-  colour card (`frontend/src/App.jsx`, `ScanScreen`).
+  colour card (`frontend/src/App.jsx`, `ScanScreen`). The physical card to
+  print and hold in that guide is `docs/reference_colour_card.pdf` (see
+  `docs/generate_reference_card.py` and "Reference colour card" below).
 - **Classification, done three ways, on purpose:**
   - *On-device preview* (`classifyRegion` in `App.jsx`) — samples the vial and
     card zones from the captured frame, applies a grey-world colour
@@ -108,6 +110,28 @@ Open `http://localhost:5173`, sign in, and use **New scan**. On a phone this
 uses the real camera and GPS; in a desktop browser without camera/GPS
 permissions it falls back to a simulated feed/location so the flow is still
 demoable.
+
+## Reference colour card
+
+`docs/reference_colour_card.pdf` is print-ready — one A4 sheet with three
+ID-card-sized (85.6 × 54.0mm) cards and cut lines, so one print gives you
+spares. It's a single flat, matte, neutral-grey surface (sRGB 128,128,128)
+on purpose: `backend/src/utils/colorAnalysis.js` and the on-device preview
+both do a grey-world correction — they average the whole card region and
+treat any deviation from true neutral (R=G=B) as a lighting colour cast to
+correct for, so the card has to actually be neutral in print, not just look
+grey on screen.
+
+```bash
+cd docs
+python generate_reference_card.py   # needs: pip install reportlab
+```
+
+Print at 100% scale on plain matte paper (no "fit to page", no lamination —
+gloss causes glare that throws off the sample). Cut along the dashed lines.
+The target grey value is printed on each card so you can re-measure a print
+with any colour-picker tool and check it came out close to neutral — cheap
+printers commonly drift off-grey.
 
 ## Known limitations / what a judge will probe
 
