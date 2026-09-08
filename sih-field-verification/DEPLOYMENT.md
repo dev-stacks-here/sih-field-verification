@@ -1,201 +1,130 @@
-# Permanent Public Hosting & Deployment Guide
+# Permanent Public Hosting Guide (100% Free / Static Hosting)
 
-This guide provides end-to-end instructions for permanently hosting the **Field Verification Platform** online with public HTTPS access, automated SSL certificates, and continuous deployment.
+This guide walks you through permanently hosting the **Field Verification Platform** online with **zero server costs, zero Docker requirements, and zero credit card needed**.
 
 ---
 
-## Architecture Overview
+## Overview: In-Browser Static Engine (Zero Server Cost)
 
-The system consists of three decoupled components:
+Because many cloud providers charge for Docker or require credit card verification for container runtimes, this platform includes a **built-in In-Browser Static Engine** ([`frontend/src/staticEngine.js`](frontend/src/staticEngine.js)):
 
 ```
-┌─────────────────────────────────┐
-│     User Browser / Mobile       │
-│  (Camera capture requires HTTPS)│
-└──────────────┬──────────────────┘
-               │
-               ▼
-┌─────────────────────────────────┐
-│    Frontend SPA (Vite/React)    │
-│  Vercel / Render Static Site    │
-└──────────────┬──────────────────┘
-               │ REST API / Uploads
-               ▼
-┌─────────────────────────────────┐
-│   Backend API (Node Express)    │
-│  Render Web Service / Docker    │
-│   (SQLite + Ed25519 Keys)       │
-└──────────────┬──────────────────┘
-               │ Zero-Shot & Anti-Spoofing
-               ▼
-┌─────────────────────────────────┐
-│    ML Vision Service (FastAPI)  │
-│  Hugging Face Spaces (16GB RAM) │
-│   (SigLIP + 2D FFT Forensic)    │
-└─────────────────────────────────┘
+┌─────────────────────────────────────────────────────────────┐
+│                 STATIC WEB APPLICATION                      │
+│        Hosted on GitHub Pages / Render Static / Vercel      │
+│                                                             │
+│  ┌───────────────────────┐   ┌───────────────────────────┐  │
+│  │ HTML5 Camera & Canvas │   │ WebCrypto Tamper-Evidence │  │
+│  │ Real-time viewfinder  │   │ SHA-256 + HMAC digital    │  │
+│  │ + Reference Card Box  │   │ signatures                │  │
+│  └──────────┬────────────┘   └─────────────▲─────────────┘  │
+│             │                              │                │
+│             ▼                              │                │
+│  ┌───────────────────────┐   ┌─────────────┴─────────────┐  │
+│  │ Calibrated Vision     │   │ Local Audit Vault         │  │
+│  │ Grey-world balance &  │──▶│ IndexedDB / LocalStorage  │  │
+│  │ Hue reaction engine   │   │ + Password Auth Deletion  │  │
+│  └───────────────────────┘   └───────────────────────────┘  │
+└─────────────────────────────────────────────────────────────┘
 ```
 
-> [!IMPORTANT]
-> **HTTPS is Required for Camera Access:**
-> Modern mobile and desktop browsers (`Chrome`, `Safari`, `Edge`, `Firefox`) **strictly block** webcam/camera access (`navigator.mediaDevices.getUserMedia`) on unencrypted HTTP connections (except `localhost`). All deployment paths below provide free, automated SSL/TLS (HTTPS) certificates.
+### What runs in Static Mode:
+- **Zero-Server Camera Capture**: Accesses device camera or fallback simulated capture with real-time alignment guide.
+- **Calibrated Vision Engine**: Performs in-memory HTML5 Canvas grey-world white-balance calibration and HSV colorimetric classification (Positive / Negative / Inconclusive).
+- **Forensic Anti-Spoofing & AI Detection**: Performs high-frequency Moiré pattern detection, screen recapture grid analysis, and sensor noise texture dispersion checks.
+- **Tamper-Evident Signatures**: Uses the browser's native `crypto.subtle` (Web Crypto API) to compute SHA-256 hashes and digital signatures.
+- **Audit Vault & Deletion**: Complete search, filter, and zero-retention password-protected record deletion.
+- **Dual-Mode Sync**: If a backend API is later provided via `VITE_API_BASE_URL`, the app automatically connects to it; otherwise it operates standalone.
 
 ---
 
-## Strategy 1: 100% Free Forever Cloud Hosting (Recommended)
+## Hosting Method 1: GitHub Pages (100% Free, Zero Config)
 
-This strategy combines three generous free tiers to run the entire system forever at zero cost without entering a credit card:
+GitHub Pages hosts your static site directly from your repository for free with automated HTTPS:
 
-| Service | Host | Free Tier Specs | URL Scheme |
-| :--- | :--- | :--- | :--- |
-| **ML Vision Service** | **Hugging Face Spaces** | **16 GB RAM**, 2 vCPUs | `https://<username>-sih-field-ml.hf.space` |
-| **Backend API** | **Render** | 512 MB RAM, free Web Service | `https://sih-field-backend.onrender.com` |
-| **Frontend UI** | **Render** or **Vercel** | Free global edge CDN | `https://sih-field-verification.vercel.app` |
-
----
-
-### Step 1: Deploy ML Service on Hugging Face Spaces (Free 16 GB RAM)
-
-Because Google SigLIP + PyTorch uses ~1.5 GB RAM, Hugging Face Spaces is the ideal zero-cost host (giving you 16 GB RAM free):
-
-1. Go to [Hugging Face Spaces](https://huggingface.co/spaces) and click **Create new Space**.
-2. Set Space Name: `sih-field-ml` (or any name you prefer).
-3. Select **Space SDK**: **Docker** -> **Blank**.
-4. Set Space Hardware: **CPU Basic (2 vCPU, 16 GB RAM - Free)**.
-5. Set Space Visibility: **Public**.
-6. Upload or push the files from the [`ml-service/`](file:///C:/Users/Arnav/OneDrive/Desktop/MUJ/sih-field-verification-main/sih-field-verification-main/sih-field-verification/ml-service) folder into your new Hugging Face Space repository:
-   - `Dockerfile`
-   - `requirements.txt`
-   - `app.py`
-   - `classifier.py`
-   - `authenticity.py`
-7. Hugging Face will automatically build the Docker container and start FastAPI on port `7860`.
-8. Once built, copy your public Space URL (click the three dots in top-right -> **Embed this Space** -> copy direct URL, e.g.):
+1. Open your repository on GitHub: [`https://github.com/dev-stacks-here/sih-field-verification`](https://github.com/dev-stacks-here/sih-field-verification).
+2. Click **Settings** (top tab) -> **Pages** (left sidebar under "Code and automation").
+3. Under **Build and deployment**:
+   - Change **Source** from "Deploy from a branch" to **GitHub Actions**.
+4. That's it! The included workflow [`.github/workflows/deploy-pages.yml`](.github/workflows/deploy-pages.yml) will automatically build and publish your site whenever you push to `main`.
+5. Your permanent public HTTPS URL will be:
    ```
-   https://<your-username>-sih-field-ml.hf.space
+   https://dev-stacks-here.github.io/sih-field-verification/
    ```
-9. Verify by opening `https://<your-username>-sih-field-ml.hf.space/status` in your browser. You should see `{"status":"ok"}`.
 
 ---
 
-### Step 2: Deploy Backend & Frontend on Render (1-Click Blueprint)
+## Hosting Method 2: Render Static Site (100% Free, No Credit Card)
 
-The repository includes a ready-to-use [`render.yaml`](file:///C:/Users/Arnav/OneDrive/Desktop/MUJ/sih-field-verification-main/sih-field-verification-main/sih-field-verification/render.yaml) blueprint that provisions both the Backend Web Service and Frontend Static Site:
+Render Static Sites are **completely free** (unlike Docker web services):
 
-1. Go to your [Render Dashboard](https://dashboard.render.com/).
-2. Click **New +** -> **Blueprint**.
-3. Connect your GitHub repository: `dev-stacks-here/sih-field-verification`.
-4. Render will automatically read `render.yaml` and configure two services:
-   - `field-verification-backend` (Node.js web service)
-   - `field-verification-frontend` (Vite static website)
-5. Fill in the environment variable prompt:
-   - **`ML_SERVICE_URL`**: Paste your Hugging Face Space URL from Step 1 (e.g. `https://<your-username>-sih-field-ml.hf.space`).
-   - `JWT_SECRET` is generated automatically.
-6. Click **Apply**.
-7. Render will build both services. Once finished, Render gives you:
-   - Backend URL: `https://field-verification-backend.onrender.com`
-   - Frontend URL: `https://field-verification-frontend.onrender.com`
+1. Go to [Render Dashboard](https://dashboard.render.com/) and sign in with GitHub.
+2. Click **New +** -> **Static Site**.
+3. Select your repository: `dev-stacks-here/sih-field-verification`.
+4. Configure the build settings:
+   - **Name**: `field-verification` (or any name)
+   - **Root Directory**: `frontend`
+   - **Build Command**: `npm install && npm run build`
+   - **Publish Directory**: `dist`
+5. Click **Create Static Site**.
+6. Render will automatically build the site and provide a permanent HTTPS URL like:
+   ```
+   https://field-verification.onrender.com
+   ```
+*(Alternatively, click **New +** -> **Blueprint**; the included [`render.yaml`](render.yaml) is pre-configured to deploy this static site automatically).*
 
 ---
 
-### Alternative Step 2B: Deploy Frontend on Vercel
+## Hosting Method 3: Vercel (100% Free, Instant Global CDN)
 
-If you prefer Vercel for the frontend:
+Vercel provides instant edge deployment with automated SSL:
 
-1. Go to [Vercel Dashboard](https://vercel.com/dashboard) and click **Add New** -> **Project**.
-2. Import `dev-stacks-here/sih-field-verification`.
-3. In Project Settings:
-   - **Root Directory**: Select `frontend`.
+1. Go to [Vercel Dashboard](https://vercel.com/dashboard) and sign in.
+2. Click **Add New...** -> **Project**.
+3. Import `dev-stacks-here/sih-field-verification`.
+4. In Project Settings:
+   - **Root Directory**: Click "Edit" and select `frontend`.
    - **Framework Preset**: `Vite`.
    - **Build Command**: `npm run build`.
    - **Output Directory**: `dist`.
-4. Add Environment Variable:
-   - Name: `VITE_API_BASE_URL`
-   - Value: `https://field-verification-backend.onrender.com/api` (your deployed Render backend URL).
-5. Click **Deploy**. Vercel will assign a production domain like `https://sih-field-verification.vercel.app`.
+5. Click **Deploy**.
+6. Vercel provisions a fast, permanent HTTPS URL like:
+   ```
+   https://sih-field-verification.vercel.app
+   ```
 
 ---
 
-## Strategy 2: Self-Hosted Docker Compose on VPS / Cloud VM
+## Hosting Method 4: Netlify (100% Free)
 
-For private instances or dedicated infrastructure (DigitalOcean, AWS EC2, Hetzner, Linode, Oracle Cloud Free Tier):
+1. Go to [Netlify Dashboard](https://app.netlify.com/).
+2. Click **Add new site** -> **Import an existing project** -> **GitHub**.
+3. Select `dev-stacks-here/sih-field-verification`.
+4. Base directory: `frontend` | Build command: `npm run build` | Publish directory: `dist`.
+5. Click **Deploy**.
 
-### 1. Requirements
-- Any Linux server with Docker and Docker Compose v2 installed.
-- Open incoming ports: `80` (HTTP) and `443` (HTTPS) or `4000`/`8000` for testing.
+---
 
-### 2. Launch Stack
+## Operator Sign-In Credentials (Static Mode)
 
-Clone the repository and run Docker Compose:
+When visiting the live static website, you can sign in using either of the pre-configured operator accounts:
+
+| Operator ID | Password | Role | Station |
+| :--- | :--- | :--- | :--- |
+| **`OP-4401`** | **`fieldpass123`** | Officer A. Verma | Zone 4 Narcotics Unit |
+| **`R.SHARMA`** | **`Field@123`** | Inspector R. Sharma | Patrol Unit 7 |
+
+*Note: You can also enter any custom Operator ID with a password (minimum 4 characters), and the in-browser vault will register and authenticate you locally.*
+
+---
+
+## Optional: Self-Hosted Docker (If You Have a VPS)
+
+If you ever decide to host on a private Linux VPS or dedicated server where Docker is available:
 
 ```bash
 git clone https://github.com/dev-stacks-here/sih-field-verification.git
 cd sih-field-verification
-
-# Build and start all 3 services in background
 docker compose up -d --build
 ```
-
-Docker Compose spins up:
-- **`fvs-frontend`**: Serves React SPA and reverse proxies `/api/` on port `80`.
-- **`fvs-backend`**: Node.js API with persistent SQLite database volume on port `4000`.
-- **`fvs-ml-service`**: FastAPI with SigLIP & 2D FFT anti-spoofing on port `8000`.
-
-### 3. Automated Free SSL via Caddy (2 Lines)
-
-To enable HTTPS on your domain (e.g. `verify.yourdomain.com`), install Caddy or use this `Caddyfile`:
-
-```caddyfile
-verify.yourdomain.com {
-    reverse_proxy localhost:80
-}
-```
-
-Run `caddy run`. Caddy will automatically obtain and renew free Let's Encrypt certificates.
-
----
-
-## Environment Variables Reference
-
-### Backend Service (`backend/`)
-| Variable | Default | Purpose |
-| :--- | :--- | :--- |
-| `PORT` | `4000` | Port for Express API server |
-| `JWT_SECRET` | *(Required)* | Secret key for signing operator JWT sessions |
-| `ML_SERVICE_URL` | `http://localhost:8000` | Public or internal URL of the ML service |
-| `ML_SERVICE_TIMEOUT_MS` | `15000` | Max milliseconds to wait for ML inference |
-| `FRONTEND_URL` | `*` | Allowed CORS origins for frontend domain |
-| `DB_PATH` | `./data/field_verification.db` | File path to SQLite database |
-| `UPLOADS_DIR` | `./uploads` | Storage directory for captured scan photos |
-
-### Frontend Service (`frontend/`)
-| Variable | Default | Purpose |
-| :--- | :--- | :--- |
-| `VITE_API_BASE_URL` | `/api` | Base URL of backend API (e.g. `https://api.domain.com/api`) |
-
-### ML Service (`ml-service/`)
-| Variable | Default | Purpose |
-| :--- | :--- | :--- |
-| `PORT` | `7860` (or `8000`) | Port for FastAPI / Uvicorn |
-| `CUSTOM_MODEL_PATH` | `./models/custom_classifier.pt` | Path to optional supervised CNN weights |
-| `ENSEMBLE_WEIGHT_M1` | `0.40` | SigLIP Foundation model weight |
-| `ENSEMBLE_WEIGHT_M2` | `0.60` | Custom model weight |
-
----
-
-## Post-Deployment Verification Checklist
-
-After launching, perform these verification steps:
-
-- [ ] **Backend Health Check**: Open `https://<backend-url>/api/health`. Response should be `{"status":"ok","service":"field-verification-backend"}`.
-- [ ] **ML Status Check**: Open `https://<ml-url>/status`. Response should show `status: "ok"`, `device: "cpu"`, and `google/siglip-base-patch16-224` loaded.
-- [ ] **Operator Login**:
-  - URL: `https://<frontend-url>`
-  - Default User ID: `OP-4401`
-  - Default Password: `fieldpass123`
-- [ ] **Camera Access & Field Scan**:
-  - Click **Start Field Scan**.
-  - Browser should prompt for camera permissions and display the live viewfinder.
-- [ ] **Dual-Model & Anti-Spoofing Verification**:
-  - Perform a scan. The system will crop the vial, query SigLIP + 2D FFT Moiré anti-spoofing, and display the tamper-evident Ed25519 signature.
-- [ ] **Secure Deletion Verification**:
-  - In the **Scans** tab, delete a scan using your operator password (`fieldpass123`) to confirm zero-retention password verification.
+This boots the full stack (`frontend` on port 80, `backend` on port 4000, and `ml-service` on port 8000).

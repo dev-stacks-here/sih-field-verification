@@ -1,27 +1,7 @@
 services:
-  # Node.js Express Backend API
-  - type: web
-    name: field-verification-backend
-    runtime: node
-    plan: free
-    rootDir: backend
-    buildCommand: npm install
-    startCommand: node src/server.js
-    envVars:
-      - key: NODE_VERSION
-        value: 20.18.0
-      - key: JWT_SECRET
-        generateValue: true
-      - key: ML_SERVICE_URL
-        sync: false
-      - key: ML_SERVICE_TIMEOUT_MS
-        value: "15000"
-      - key: FRONTEND_URL
-        value: "*"
-
-  # Frontend Vite React Static Site
+  # 100% Free Forever Render Static Site (No Docker / No Credit Card Required)
   - type: static
-    name: field-verification-frontend
+    name: field-verification-platform
     plan: free
     rootDir: frontend
     buildCommand: npm install && npm run build
@@ -30,9 +10,3 @@ services:
       - type: rewrite
         source: /*
         destination: /index.html
-    envVars:
-      - key: VITE_API_BASE_URL
-        fromService:
-          type: web
-          name: field-verification-backend
-          property: host
