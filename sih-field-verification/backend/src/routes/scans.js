@@ -1,6 +1,7 @@
 const express = require("express");
 const {
   createScan, listScans, getScan, getScanImage, verifyScan, confirmScan, getAccuracyStats,
+  deleteScan, purgeScans,
 } = require("../controllers/scanController");
 const authMiddleware = require("../middleware/auth");
 
@@ -16,5 +17,7 @@ router.get("/:recordId", getScan);
 router.get("/:recordId/image", getScanImage);
 router.get("/:recordId/verify", verifyScan);
 router.patch("/:recordId/confirm", confirmScan);
+router.delete("/", purgeScans);
+router.delete("/:recordId", deleteScan);
 
 module.exports = router;

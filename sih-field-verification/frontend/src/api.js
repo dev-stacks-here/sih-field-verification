@@ -98,4 +98,18 @@ export const api = {
   getAccuracyStats() {
     return request("/scans/stats/accuracy");
   },
+
+  deleteScan(recordId, password) {
+    return request(`/scans/${encodeURIComponent(recordId)}`, {
+      method: "DELETE",
+      body: { password },
+    });
+  },
+
+  purgeScans(password, all = true) {
+    return request("/scans", {
+      method: "DELETE",
+      body: { password, all },
+    });
+  },
 };

@@ -3,7 +3,7 @@ import {
   Shield, Camera, MapPin, Clock, LogOut, Search, CheckCircle2,
   AlertTriangle, XCircle, FileText, RotateCcw, ChevronLeft,
   Fingerprint, Copy, Plus, Loader2, Check, User, Hash, Radio, ShieldCheck, ShieldX,
-  AlertOctagon, Trash2, ArrowRight,
+  AlertOctagon, Trash2, ArrowRight, Lock, ShieldAlert, Eye, EyeOff,
 } from "lucide-react";
 import { api } from "./api.js";
 import LandingPage from "./LandingPage.jsx";
@@ -215,7 +215,7 @@ function ConfirmRow({ scan, onConfirmed }) {
   );
 }
 
-function ScanCard({ scan, onConfirmed }) {
+function ScanCard({ scan, onConfirmed, onDelete }) {
   const c = CATEGORY[scan.result] || CATEGORY.inconclusive;
   const thumb = useAuthedImageUrl(scan.recordId);
   return (
@@ -228,7 +228,23 @@ function ScanCard({ scan, onConfirmed }) {
       <div className="scan-card-body">
         <div className="scan-card-row1">
           <ResultBadge result={scan.result} />
-          <span className="scan-card-id">{scan.recordId}</span>
+          <div className="scan-card-header-actions">
+            <span className="scan-card-id">{scan.recordId}</span>
+            {onDelete && (
+              <button
+                type="button"
+                className="scan-delete-btn"
+                title="Remove scan record (Requires officer authentication)"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  onDelete(scan);
+                }}
+                aria-label={`Remove record ${scan.recordId}`}
+              >
+                <Trash2 size={12} />
+              </button>
+            )}
+          </div>
         </div>
         <div className="scan-card-meta">
           <span><Clock size={11} /> {formatTimestamp(scan.receivedAt)}</span>
@@ -260,6 +276,154 @@ function CopyRow({ value }) {
       <span className="hash-text">{value.slice(0, 16)}…{value.slice(-8)}</span>
       {copied ? <Check size={13} color="var(--teal)" /> : <Copy size={13} />}
     </button>
+  );
+}
+
+function AuthDeleteModal({ isOpen, onClose, target, onConfirm, operator }) {
+  const [password, setPassword] = useState("");
+  const [error, setError] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [showPassword, setShowPassword] = useState(false);
+  const inputRef = useRef(null);
+
+  useEffect(() => {
+    if (isOpen) {
+      setPassword("");
+      setError("");
+      setBusy(false);
+      setShowPassword(false);
+      setTimeout(() => inputRef.current?.focus(), 80);
+    }
+  }, [isOpen]);
+
+  if (!isOpen || !target) return null;
+
+  const isPurge = target.mode === "purge";
+  const scan = target.scan;
+
+  const handleSubmit = async (e) => {
+    e.preventDefault();
+    if (!password.trim()) {
+      setError("Please enter your officer password to authenticate.");
+      return;
+    }
+    setBusy(true);
+    setError("");
+    try {
+      await onConfirm(password, target);
+      setPassword(""); // immediately scrub password from state
+      onClose();
+    } catch (err) {
+      setError(err.message || "Authentication failed: Invalid officer credentials.");
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const handleDismiss = () => {
+    setPassword(""); // immediately scrub password from state
+    setError("");
+    onClose();
+  };
+
+  return (
+    <div className="auth-modal-overlay" onClick={handleDismiss}>
+      <div className="auth-modal" onClick={(e) => e.stopPropagation()}>
+        <div className="auth-modal-header">
+          <div className="auth-modal-badge">
+            <ShieldAlert size={22} className="auth-shield-icon" />
+          </div>
+          <h3>Security Authentication Required</h3>
+          <p className="auth-modal-sub">
+            Forensic chain-of-custody safeguard: Re-authenticate with your officer credentials to permanently remove field test records.
+          </p>
+        </div>
+
+        <div className="auth-modal-target-box">
+          <div className="target-box-row">
+            <span className="target-box-label">Target:</span>
+            {isPurge ? (
+              <span className="target-box-val bold text-red">All Recent Field Scans</span>
+            ) : (
+              <span className="target-box-val mono font-mono">{scan?.recordId}</span>
+            )}
+          </div>
+          {!isPurge && scan && (
+            <div className="target-box-row">
+              <span className="target-box-label">Verdict:</span>
+              <ResultBadge result={scan.result} size="sm" />
+            </div>
+          )}
+          <div className="target-box-row">
+            <span className="target-box-label">Authorized Officer:</span>
+            <span className="target-box-val">{operator?.name || "Officer"} ({operator?.userId})</span>
+          </div>
+        </div>
+
+        <form onSubmit={handleSubmit} className="auth-modal-form">
+          <div className="form-group">
+            <label className="auth-field-label" htmlFor="auth-delete-password">
+              <Lock size={12} /> Officer Password
+            </label>
+            <div className="input-with-icon">
+              <Lock size={15} className="input-left-icon" />
+              <input
+                id="auth-delete-password"
+                ref={inputRef}
+                type={showPassword ? "text" : "password"}
+                placeholder="Enter password to authenticate"
+                value={password}
+                onChange={(e) => { setPassword(e.target.value); setError(""); }}
+                disabled={busy}
+                autoComplete="current-password"
+              />
+              <button
+                type="button"
+                className="input-eye-btn"
+                onClick={() => setShowPassword(!showPassword)}
+                tabIndex={-1}
+                aria-label={showPassword ? "Hide password" : "Show password"}
+              >
+                {showPassword ? <EyeOff size={15} /> : <Eye size={15} />}
+              </button>
+            </div>
+            <div className="auth-scrub-notice">
+              <CheckCircle2 size={11} className="text-forest" />
+              <span>Inputs are scrubbed from memory immediately after authentication.</span>
+            </div>
+          </div>
+
+          {error && (
+            <div className="auth-error-banner">
+              <AlertOctagon size={14} />
+              <span>{error}</span>
+            </div>
+          )}
+
+          <div className="auth-modal-actions">
+            <button
+              type="button"
+              className="btn btn-secondary"
+              onClick={handleDismiss}
+              disabled={busy}
+            >
+              Cancel
+            </button>
+            <button
+              type="submit"
+              className="btn btn-danger-auth"
+              disabled={busy || !password.trim()}
+            >
+              {busy ? (
+                <><Loader2 size={14} className="spin" /> Authenticating…</>
+              ) : (
+                <><Trash2 size={14} /> {isPurge ? "Authenticate & Clear All" : "Authenticate & Delete"}</>
+              )}
+            </button>
+          </div>
+        </form>
+      </div>
+    </div>
   );
 }
 
@@ -423,6 +587,13 @@ function LoginScreen({ onLogin }) {
 function HomeScreen({ operator, onNewScan, onOpenLog, onLogout }) {
   const [scans, setScans] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [authModal, setAuthModal] = useState({ open: false, mode: "single", scan: null });
+  const [feedbackToast, setFeedbackToast] = useState("");
+
+  const showToast = (msg) => {
+    setFeedbackToast(msg);
+    setTimeout(() => setFeedbackToast(""), 3500);
+  };
 
   useEffect(() => {
     let cancelled = false;
@@ -433,6 +604,18 @@ function HomeScreen({ operator, onNewScan, onOpenLog, onLogout }) {
       .finally(() => { if (!cancelled) setLoading(false); });
     return () => { cancelled = true; };
   }, []);
+
+  const handleAuthDelete = async (password, target) => {
+    if (target.mode === "single" && target.scan) {
+      await api.deleteScan(target.scan.recordId, password);
+      setScans((prev) => prev.filter((s) => s.recordId !== target.scan.recordId));
+      showToast(`Record ${target.scan.recordId} safely removed.`);
+    } else if (target.mode === "purge") {
+      await api.purgeScans(password, true);
+      setScans([]);
+      showToast("All recent field scans safely cleared.");
+    }
+  };
 
   const initials = operator.userId.replace(/[^A-Z]/g, "").slice(0, 2) || "OP";
 
@@ -466,9 +649,28 @@ function HomeScreen({ operator, onNewScan, onOpenLog, onLogout }) {
         <span>Search test records…</span>
       </button>
 
+      {feedbackToast && (
+        <div className="feedback-toast">
+          <Check size={14} className="text-forest" />
+          <span>{feedbackToast}</span>
+        </div>
+      )}
+
       <div className="section-head">
         <h2>Recent Field Scans</h2>
-        {scans.length > 0 && <button className="link-btn" onClick={onOpenLog}>View all</button>}
+        <div className="section-head-actions">
+          {scans.length > 0 && (
+            <button
+              type="button"
+              className="danger-link-btn"
+              onClick={() => setAuthModal({ open: true, mode: "purge", scan: null })}
+              title="Clear recent field scans with officer authentication"
+            >
+              <Trash2 size={11} /> Clear recent
+            </button>
+          )}
+          {scans.length > 0 && <button className="link-btn" onClick={onOpenLog}>View all</button>}
+        </div>
       </div>
 
       <div className="scan-list">
@@ -479,7 +681,13 @@ function HomeScreen({ operator, onNewScan, onOpenLog, onLogout }) {
             <p>No scans recorded yet.<br />Start your first field test below.</p>
           </div>
         )}
-        {!loading && scans.map((s) => <ScanCard key={s.recordId} scan={s} />)}
+        {!loading && scans.map((s) => (
+          <ScanCard
+            key={s.recordId}
+            scan={s}
+            onDelete={(scan) => setAuthModal({ open: true, mode: "single", scan })}
+          />
+        ))}
       </div>
 
       <div className="home-fab-wrap">
@@ -488,6 +696,14 @@ function HomeScreen({ operator, onNewScan, onOpenLog, onLogout }) {
           <span>New Chemical Scan</span>
         </button>
       </div>
+
+      <AuthDeleteModal
+        isOpen={authModal.open}
+        target={authModal}
+        operator={operator}
+        onClose={() => setAuthModal({ open: false, mode: "single", scan: null })}
+        onConfirm={handleAuthDelete}
+      />
     </div>
   );
 }
@@ -853,10 +1069,17 @@ function AccuracySummary() {
   );
 }
 
-function LogScreen({ onBack }) {
+function LogScreen({ onBack, operator }) {
   const [query, setQuery] = useState("");
   const [scans, setScans] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [authModal, setAuthModal] = useState({ open: false, mode: "single", scan: null });
+  const [feedbackToast, setFeedbackToast] = useState("");
+
+  const showToast = (msg) => {
+    setFeedbackToast(msg);
+    setTimeout(() => setFeedbackToast(""), 3500);
+  };
 
   useEffect(() => {
     let cancelled = false;
@@ -874,11 +1097,34 @@ function LogScreen({ onBack }) {
     setScans((prev) => prev.map((s) => (s.recordId === updated.recordId ? updated : s)));
   };
 
+  const handleAuthDelete = async (password, target) => {
+    if (target.mode === "single" && target.scan) {
+      await api.deleteScan(target.scan.recordId, password);
+      setScans((prev) => prev.filter((s) => s.recordId !== target.scan.recordId));
+      showToast(`Record ${target.scan.recordId} safely removed.`);
+    } else if (target.mode === "purge") {
+      await api.purgeScans(password, true);
+      setScans([]);
+      showToast("All matching scan records safely cleared.");
+    }
+  };
+
   return (
     <div className="screen log-screen">
       <div className="log-topbar">
         <button className="icon-btn" onClick={onBack} aria-label="Back"><ChevronLeft size={18} /></button>
         <h2>Test log</h2>
+        {scans.length > 0 && (
+          <button
+            type="button"
+            className="danger-link-btn"
+            style={{ marginLeft: "auto" }}
+            onClick={() => setAuthModal({ open: true, mode: "purge", scan: null })}
+            title="Purge all scan records with officer authentication"
+          >
+            <Trash2 size={11} /> Clear all
+          </button>
+        )}
       </div>
       <AccuracySummary />
       <div className="search-real">
@@ -889,13 +1135,36 @@ function LogScreen({ onBack }) {
           onChange={(e) => setQuery(e.target.value)}
         />
       </div>
+
+      {feedbackToast && (
+        <div className="feedback-toast">
+          <Check size={14} className="text-forest" />
+          <span>{feedbackToast}</span>
+        </div>
+      )}
+
       <div className="scan-list scroll">
         {loading && <div className="empty-state"><Loader2 size={20} className="spin" /><p>Loading…</p></div>}
         {!loading && scans.length === 0 && (
           <div className="empty-state"><Search size={20} strokeWidth={1.6} /><p>No matching records.</p></div>
         )}
-        {!loading && scans.map((s) => <ScanCard key={s.recordId} scan={s} onConfirmed={handleConfirmed} />)}
+        {!loading && scans.map((s) => (
+          <ScanCard
+            key={s.recordId}
+            scan={s}
+            onConfirmed={handleConfirmed}
+            onDelete={(scan) => setAuthModal({ open: true, mode: "single", scan })}
+          />
+        ))}
       </div>
+
+      <AuthDeleteModal
+        isOpen={authModal.open}
+        target={authModal}
+        operator={operator}
+        onClose={() => setAuthModal({ open: false, mode: "single", scan: null })}
+        onConfirm={handleAuthDelete}
+      />
     </div>
   );
 }
@@ -1026,7 +1295,7 @@ export default function App() {
           {screen === "report" && (
             <ReportScreen records={reportRecords} onDone={() => setScreen(operator ? "home" : "login")} />
           )}
-          {screen === "log" && <LogScreen onBack={() => setScreen("home")} />}
+          {screen === "log" && <LogScreen operator={operator} onBack={() => setScreen("home")} />}
         </div>
       </div>
       {!isEmbedded && <p className="stage-caption">Field Verification — presumptive result tool</p>}
@@ -1420,6 +1689,97 @@ const CSS = `
 
 .section-head { display: flex; align-items: center; justify-content: space-between; margin-bottom: 10px; }
 .section-head h2 { font-size: 14.5px; font-weight: 700; margin: 0; color: var(--text); }
+.section-head-actions { display: flex; align-items: center; gap: 8px; }
+
+.danger-link-btn {
+  background: transparent; border: none; color: #DC2626; font-size: 11.5px; font-weight: 600;
+  cursor: pointer; padding: 4px 6px; border-radius: 6px; display: inline-flex; align-items: center; gap: 4px;
+  font-family: inherit; transition: all 0.15s ease;
+}
+.danger-link-btn:hover { background: #FEF2F2; color: #991B1B; }
+
+.scan-card-header-actions { display: flex; align-items: center; gap: 6px; }
+.scan-delete-btn {
+  background: transparent; border: none; color: #94A3B8; padding: 3px 5px; border-radius: 4px;
+  cursor: pointer; display: flex; align-items: center; justify-content: center; transition: all 0.15s ease;
+}
+.scan-delete-btn:hover { background: #FEF2F2; color: #DC2626; }
+
+.feedback-toast {
+  background: #ECFDF5; border: 1px solid #A7F3D0; color: #065F46; border-radius: 8px;
+  padding: 8px 12px; font-size: 12px; font-weight: 600; display: flex; align-items: center;
+  gap: 7px; margin-bottom: 12px; box-shadow: var(--shadow-sm); animation: fadeIn 0.2s ease;
+}
+
+/* ── SECURITY AUTHENTICATION MODAL ── */
+.auth-modal-overlay {
+  position: fixed; inset: 0; background: rgba(5, 28, 18, 0.72); backdrop-filter: blur(6px);
+  display: flex; align-items: center; justify-content: center; z-index: 99999; padding: 16px;
+  animation: fadeIn 0.2s ease-out;
+}
+.auth-modal {
+  background: #FFFFFF; border: 1px solid #E2E8E4; border-radius: 16px; width: 100%; max-width: 390px;
+  box-shadow: 0 24px 50px -12px rgba(5, 28, 18, 0.4); overflow: hidden; animation: slideUp 0.22s ease-out;
+}
+.auth-modal-header {
+  padding: 22px 20px 14px 20px; text-align: center; display: flex; flex-direction: column; align-items: center;
+}
+.auth-modal-badge {
+  width: 48px; height: 48px; border-radius: 50%; background: #FEF2F2; color: #DC2626;
+  display: flex; align-items: center; justify-content: center; margin-bottom: 12px; border: 1px solid #FEE2E2;
+}
+.auth-shield-icon { color: #DC2626; }
+.auth-modal-header h3 { font-size: 16px; font-weight: 800; color: #0B130F; margin: 0 0 6px 0; }
+.auth-modal-sub { font-size: 12px; color: #6C7E75; line-height: 1.45; margin: 0; }
+.auth-modal-target-box {
+  background: #F4F6F5; border: 1px solid #E2E8E4; border-radius: 10px; margin: 0 20px 16px 20px;
+  padding: 10px 13px; display: flex; flex-direction: column; gap: 6px; font-size: 12px;
+}
+.target-box-row { display: flex; justify-content: space-between; align-items: center; }
+.target-box-label { color: #6C7E75; font-weight: 500; font-size: 11.5px; }
+.target-box-val { color: #0B130F; font-weight: 600; }
+.target-box-val.bold.text-red { color: #DC2626; font-weight: 700; }
+.auth-modal-form { padding: 0 20px 20px 20px; display: flex; flex-direction: column; }
+.auth-field-label { font-size: 12px; font-weight: 600; color: #072F1F; margin-bottom: 6px; display: flex; align-items: center; gap: 5px; }
+
+.input-with-icon {
+  position: relative; display: flex; align-items: center;
+}
+.input-with-icon .input-left-icon {
+  position: absolute; left: 12px; color: var(--muted); pointer-events: none;
+}
+.input-with-icon input {
+  width: 100%; background: #FFFFFF; border: 1px solid var(--border-input); border-radius: var(--radius-md);
+  padding: 11px 40px 11px 36px; font-size: 13.5px; font-family: inherit; color: var(--text);
+  box-shadow: var(--shadow-sm); transition: all 0.2s;
+}
+.input-with-icon input:focus {
+  outline: none; border-color: var(--brand-forest-medium);
+  box-shadow: 0 0 0 3px var(--brand-lime-translucent);
+}
+.input-eye-btn {
+  position: absolute; right: 10px; background: transparent; border: none; color: #6C7E75;
+  cursor: pointer; display: flex; align-items: center; justify-content: center; padding: 5px;
+  border-radius: 4px; transition: color 0.15s;
+}
+.input-eye-btn:hover { color: #072F1F; }
+
+.auth-scrub-notice { display: flex; align-items: center; gap: 5px; font-size: 11px; color: #16A34A; margin-top: 6px; font-weight: 500; }
+.auth-error-banner {
+  background: #FEF2F2; border: 1px solid #FCA5A5; color: #991B1B; border-radius: 8px;
+  padding: 8px 11px; font-size: 12px; font-weight: 600; display: flex; align-items: center; gap: 6px; margin-top: 10px;
+}
+.auth-modal-actions { display: flex; gap: 10px; margin-top: 16px; }
+.btn-danger-auth {
+  flex: 1.2; background: #DC2626; color: #FFFFFF; border: none; border-radius: var(--radius-md);
+  padding: 10px 14px; font-weight: 700; font-size: 13px; display: flex; align-items: center;
+  justify-content: center; gap: 7px; cursor: pointer; transition: all 0.2s; font-family: inherit;
+}
+.btn-danger-auth:hover:not(:disabled) { background: #B91C1C; transform: translateY(-1px); box-shadow: 0 4px 12px rgba(220, 38, 38, 0.3); }
+.btn-danger-auth:disabled { opacity: 0.55; cursor: not-allowed; }
+
+@keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
+@keyframes slideUp { from { opacity: 0; transform: translateY(12px) scale(0.97); } to { opacity: 1; transform: translateY(0) scale(1); } }
 
 .scan-list { display: flex; flex-direction: column; gap: 10px; }
 .scan-list.scroll { overflow-y: auto; padding-bottom: 20px; }

@@ -1,6 +1,7 @@
 const fs = require("fs");
 const path = require("path");
 const crypto = require("crypto");
+const bcrypt = require("bcryptjs");
 const db = require("../db");
 const { sha256 } = require("../utils/hash");
 const { signPayload, verifyPayload, getPublicKeyPem } = require("../utils/signing");
@@ -353,4 +354,128 @@ function getAccuracyStats(req, res) {
   });
 }
 
-module.exports = { createScan, listScans, getScan, getScanImage, verifyScan, confirmScan, getAccuracyStats };
+function deleteScan(req, res) {
+  try {
+    const { recordId } = req.params;
+    const { password } = req.body || {};
+
+    if (!password) {
+      return res.status(401).json({
+        error: "Security Authentication Required: Officer password must be provided to remove scan records.",
+      });
+    }
+
+    const operator = db
+      .prepare("SELECT * FROM operators WHERE user_id = ?")
+      .get(req.operator.userId);
+
+    if (!operator || !bcrypt.compareSync(password, operator.password_hash)) {
+      return res.status(401).json({
+        error: "Authentication failed: Invalid officer password. Access denied.",
+      });
+    }
+
+    const scan = db.prepare("SELECT * FROM scans WHERE record_id = ?").get(recordId);
+    if (!scan) {
+      return res.status(404).json({ error: "Scan record not found." });
+    }
+
+    // Unlink image file if present
+    if (scan.image_path) {
+      const filePath = path.join(UPLOADS_DIR, scan.image_path);
+      if (fs.existsSync(filePath)) {
+        try {
+          fs.unlinkSync(filePath);
+        } catch (e) {
+          console.warn("Failed to delete image file:", filePath, e.message);
+        }
+      }
+    }
+
+    db.prepare("DELETE FROM scans WHERE record_id = ?").run(recordId);
+
+    res.json({
+      success: true,
+      message: `Field scan ${recordId} has been securely removed.`,
+      recordId,
+    });
+  } catch (err) {
+    console.error("deleteScan error:", err);
+    res.status(500).json({ error: "Failed to delete scan record." });
+  }
+}
+
+function purgeScans(req, res) {
+  try {
+    const { password, all } = req.body || {};
+
+    if (!password) {
+      return res.status(401).json({
+        error: "Security Authentication Required: Officer password must be provided to clear recent scans.",
+      });
+    }
+
+    const operator = db
+      .prepare("SELECT * FROM operators WHERE user_id = ?")
+      .get(req.operator.userId);
+
+    if (!operator || !bcrypt.compareSync(password, operator.password_hash)) {
+      return res.status(401).json({
+        error: "Authentication failed: Invalid officer password. Access denied.",
+      });
+    }
+
+    const shouldPurgeAll = all === true || req.query.all === "true";
+    const query = shouldPurgeAll
+      ? "SELECT record_id, image_path FROM scans"
+      : "SELECT record_id, image_path FROM scans WHERE operator_id = ?";
+    const params = shouldPurgeAll ? [] : [req.operator.userId];
+
+    let scans = db.prepare(query).all(...params);
+
+    if (scans.length === 0 && !shouldPurgeAll) {
+      scans = db.prepare("SELECT record_id, image_path FROM scans").all();
+    }
+
+    for (const scan of scans) {
+      if (scan.image_path) {
+        const filePath = path.join(UPLOADS_DIR, scan.image_path);
+        if (fs.existsSync(filePath)) {
+          try {
+            fs.unlinkSync(filePath);
+          } catch (e) {
+            console.warn("Failed to delete image file:", filePath, e.message);
+          }
+        }
+      }
+    }
+
+    let result;
+    if (shouldPurgeAll || scans.length > 0) {
+      result = db.prepare("DELETE FROM scans").run();
+    } else {
+      result = db.prepare("DELETE FROM scans WHERE operator_id = ?").run(req.operator.userId);
+    }
+
+    res.json({
+      success: true,
+      message: `Successfully purged ${result.changes} scan records.`,
+      count: result.changes,
+    });
+  } catch (err) {
+    console.error("purgeScans error:", err);
+    res.status(500).json({ error: "Failed to purge scan records." });
+  }
+}
+
+module.exports = {
+  createScan,
+  listScans,
+  getScan,
+  getScanImage,
+  verifyScan,
+  confirmScan,
+  getAccuracyStats,
+  deleteScan,
+  purgeScans,
+};
