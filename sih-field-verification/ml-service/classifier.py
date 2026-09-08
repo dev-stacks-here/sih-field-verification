@@ -22,6 +22,8 @@ import os
 from pathlib import Path
 from PIL import Image
 
+from authenticity import analyze_authenticity
+
 logger = logging.getLogger("field-verification-ml")
 
 # Model 1: Foundation Vision-Language Model
@@ -188,14 +190,25 @@ def _classify_custom(pil_image):
     return category, confidence, scores
 
 
+def evaluate_authenticity(pil_image: Image.Image):
+    """
+    Direct endpoint for evaluating image authenticity & anti-spoofing.
+    """
+    load_model1()
+    return analyze_authenticity(pil_image, _model1, _processor1, _device)
+
+
 def classify_image(pil_image: Image.Image):
     """
     Main classification entry point.
     Runs SigLIP (Model 1) and Custom Model (Model 2, if loaded), returning
-    unified predictions and ensemble consensus diagnostics.
+    unified predictions, ensemble consensus diagnostics, and forensic authenticity.
     """
     m1_category, m1_confidence, m1_scores = _classify_siglip(pil_image)
     m2_result = _classify_custom(pil_image)
+
+    # Forensic Authenticity & Anti-Spoof Evaluation (SigLIP zero-shot + 2D FFT Moiré + noise residual)
+    authenticity_res = analyze_authenticity(pil_image, _model1, _processor1, _device)
 
     # Dual-model ensemble active
     if m2_result is not None:
@@ -217,6 +230,7 @@ def classify_image(pil_image: Image.Image):
             "scores": combined_scores,
             "model": f"{MODEL_NAME} + custom-vial-classifier",
             "method": "dual-model-ensemble",
+            "authenticity": authenticity_res,
             "ensemble": {
                 "active": True,
                 "disagreement": disagreement,
@@ -245,6 +259,7 @@ def classify_image(pil_image: Image.Image):
         "scores": m1_scores,
         "model": MODEL_NAME,
         "method": "zero-shot-siglip-pretrained",
+        "authenticity": authenticity_res,
         "ensemble": {
             "active": False,
             "disagreement": False,

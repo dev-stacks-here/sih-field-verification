@@ -76,6 +76,12 @@ db.exec(`
     confirmed_at           TEXT,
     confirmed_by           TEXT,
 
+    -- Forensic Authenticity & Anti-Spoofing telemetry
+    authenticity_score     REAL DEFAULT 100.0,
+    is_authentic           INTEGER DEFAULT 1,
+    spoof_risk             TEXT DEFAULT 'low',
+    authenticity_details   TEXT,
+
     FOREIGN KEY (operator_id) REFERENCES operators(user_id)
   );
 
@@ -104,6 +110,10 @@ addColumnIfMissing("location_acknowledged", "INTEGER DEFAULT 0");
 addColumnIfMissing("confirmed_result", "TEXT");
 addColumnIfMissing("confirmed_at", "TEXT");
 addColumnIfMissing("confirmed_by", "TEXT");
+addColumnIfMissing("authenticity_score", "REAL DEFAULT 100.0");
+addColumnIfMissing("is_authentic", "INTEGER DEFAULT 1");
+addColumnIfMissing("spoof_risk", "TEXT DEFAULT 'low'");
+addColumnIfMissing("authenticity_details", "TEXT");
 
 // Self-seed a default operator on first boot so the app is runnable immediately.
 // Password is bcrypt-hashed (12 salt rounds) before it ever touches the database.

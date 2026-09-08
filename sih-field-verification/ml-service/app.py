@@ -58,3 +58,17 @@ async def classify(image: UploadFile = File(...)):
         raise HTTPException(status_code=400, detail=f"Could not decode image: {exc}")
 
     return classifier.classify_image(img)
+
+
+@app.post("/authenticity")
+async def check_authenticity(image: UploadFile = File(...)):
+    raw = await image.read()
+    if not raw:
+        raise HTTPException(status_code=400, detail="Empty image upload.")
+    try:
+        img = Image.open(io.BytesIO(raw)).convert("RGB")
+    except Exception as exc:
+        raise HTTPException(status_code=400, detail=f"Could not decode image: {exc}")
+
+    return classifier.evaluate_authenticity(img)
+

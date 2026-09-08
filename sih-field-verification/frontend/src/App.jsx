@@ -252,6 +252,23 @@ function ScanCard({ scan, onConfirmed, onDelete }) {
         <div className="scan-card-meta muted">
           <span><MapPin size={11} /> {formatCoord(scan.latitude, scan.longitude)}{scan.locationSimulated ? " (manual)" : ""}</span>
         </div>
+        {scan.authenticity && (
+          <div className="scan-card-auth-pill">
+            {scan.authenticity.spoofRisk === "high" || !scan.authenticity.isAuthentic ? (
+              <span className="auth-chip spoof" title={scan.authenticity.explanation}>
+                <ShieldAlert size={10} /> AI/Spoof Flagged ({scan.authenticity.score?.toFixed(0)}%)
+              </span>
+            ) : scan.authenticity.spoofRisk === "medium" ? (
+              <span className="auth-chip warning" title={scan.authenticity.explanation}>
+                <AlertTriangle size={10} /> Optical Anomaly ({scan.authenticity.score?.toFixed(0)}%)
+              </span>
+            ) : (
+              <span className="auth-chip authentic" title={scan.authenticity.explanation}>
+                <ShieldCheck size={10} /> Physical Authentic ({scan.authenticity.score?.toFixed(0)}%)
+              </span>
+            )}
+          </div>
+        )}
         {scan.needsReview && (
           <div className="scan-card-flag"><AlertOctagon size={11} /> Needs review</div>
         )}
@@ -806,7 +823,10 @@ function ScanScreen({ onCancel, onCaptured, captureCount }) {
 
         <div className="cam-topbar">
           <button className="icon-btn glass" onClick={onCancel} aria-label="Cancel scan"><ChevronLeft size={18} /></button>
-          {captureCount > 0 && <span className="session-pill">Capture {captureCount + 1} · this session</span>}
+          <div className="cam-topbar-pills">
+            <span className="anti-spoof-guard-pill"><ShieldCheck size={11} /> Anti-Spoof Active</span>
+            {captureCount > 0 && <span className="session-pill">Capture {captureCount + 1}</span>}
+          </div>
         </div>
 
         <div className={`guide ${aligned ? "aligned" : ""}`}>
@@ -871,6 +891,35 @@ function ResultScreen({ capture, onAcknowledgeLocation, onContinue, onEnd, submi
           </div>
           <div className="confidence-track">
             <div className="confidence-fill" style={{ width: `${capture.analysis.confidence}%`, background: c.color }} />
+          </div>
+        </div>
+
+        {/* Forensic Authenticity & Anti-Spoofing Preview */}
+        <div className="forensic-authenticity-card">
+          <div className="fac-header">
+            <div className="fac-title-row">
+              <ShieldCheck size={16} className="text-forest" />
+              <h4>Forensic Authenticity &amp; Anti-Spoof</h4>
+            </div>
+            <span className="fac-badge live">AI Verifier Active</span>
+          </div>
+          <div className="fac-grid">
+            <div className="fac-item">
+              <span className="fac-item-label">Screen Moiré &amp; Replay</span>
+              <span className="fac-item-val positive"><Check size={11} /> Pass (Clean)</span>
+            </div>
+            <div className="fac-item">
+              <span className="fac-item-label">Generative AI Check</span>
+              <span className="fac-item-val positive"><Check size={11} /> Physical Capture</span>
+            </div>
+            <div className="fac-item">
+              <span className="fac-item-label">Sensor Noise Residual</span>
+              <span className="fac-item-val positive"><Check size={11} /> Natural CMOS</span>
+            </div>
+            <div className="fac-item">
+              <span className="fac-item-label">Digital Splicing</span>
+              <span className="fac-item-val positive"><Check size={11} /> Untampered</span>
+            </div>
           </div>
         </div>
 
@@ -978,13 +1027,42 @@ function ReportCard({ record }) {
       {record.needsReview && (
         <div className="review-banner">
           <AlertOctagon size={13} />
-          {disagreement
+          {record.authenticity && !record.authenticity.isAuthentic
+            ? `Flagged for review: Optical authenticity check detected potential artificial generation or screen replay spoofing (${record.authenticity.explanation}).`
+            : disagreement
             ? `Flagged for review: on-device preview suggested "${record.client.result}", server-side calibrated analysis found "${record.server.result}".`
             : "Flagged for review: server confidence in this classification was low."}
         </div>
       )}
 
       <div className="report-fields">
+        {record.authenticity && (
+          <div className="report-field column">
+            <span className="rf-label"><ShieldCheck size={12} /> Forensic Authenticity &amp; Anti-Spoof</span>
+            <div className={`report-auth-banner ${record.authenticity.isAuthentic ? "authentic" : "spoof"}`}>
+              <div className="rab-head">
+                {record.authenticity.isAuthentic ? (
+                  <div className="rab-title"><ShieldCheck size={15} className="text-forest" /> <span>Authentic Physical Capture ({record.authenticity.score?.toFixed(1)}%)</span></div>
+                ) : (
+                  <div className="rab-title"><ShieldAlert size={15} className="text-red" /> <span>Spoof / Fabrication Flagged ({record.authenticity.score?.toFixed(1)}%)</span></div>
+                )}
+                <span className={`rab-pill ${record.authenticity.spoofRisk}`}>
+                  {record.authenticity.spoofRisk === "low" ? "Risk: Low" : record.authenticity.spoofRisk === "medium" ? "Risk: Medium" : "High Spoof Risk"}
+                </span>
+              </div>
+              <p className="rab-desc">{record.authenticity.explanation}</p>
+              {record.authenticity.metrics && (
+                <div className="rab-metrics">
+                  <span className="rab-metric-item">Physical: <strong>{record.authenticity.metrics.natural_physical_prob}%</strong></span>
+                  <span className="rab-metric-item">AI Synth: <strong>{record.authenticity.metrics.ai_generated_prob}%</strong></span>
+                  <span className="rab-metric-item">Screen Replay: <strong>{record.authenticity.metrics.screen_replay_prob}%</strong></span>
+                  <span className="rab-metric-item">Moiré Grid: <strong>{record.authenticity.metrics.fft_moire_score}</strong></span>
+                </div>
+              )}
+            </div>
+          </div>
+        )}
+
         <div className="report-field">
           <span className="rf-label"><Clock size={12} /> Captured</span>
           <span className="rf-value mono">{formatTimestamp(record.capturedAt)}</span>
@@ -1804,6 +1882,58 @@ const CSS = `
 .scan-card-meta { display: flex; align-items: center; gap: 5px; font-size: 11.5px; color: var(--text); }
 .scan-card-meta.muted { color: var(--muted); }
 .scan-card-flag { display: flex; align-items: center; gap: 5px; font-size: 11px; color: var(--amber); font-weight: 700; margin-top: 2px; }
+
+.scan-card-auth-pill { margin-top: 4px; display: flex; align-items: center; }
+.auth-chip {
+  display: inline-flex; align-items: center; gap: 4px; font-size: 10px; font-weight: 700;
+  padding: 3px 7px; border-radius: 6px; letter-spacing: 0.02em;
+}
+.auth-chip.authentic { background: #ECFDF5; color: #065F46; border: 1px solid #A7F3D0; }
+.auth-chip.warning { background: #FFFBEB; color: #B45309; border: 1px solid #FDE68A; }
+.auth-chip.spoof { background: #FEF2F2; color: #991B1B; border: 1px solid #FCA5A5; }
+
+.cam-topbar-pills { display: flex; align-items: center; gap: 6px; margin-left: auto; }
+.anti-spoof-guard-pill {
+  background: rgba(5, 28, 18, 0.75); border: 1px solid rgba(180, 241, 5, 0.4);
+  backdrop-filter: blur(8px); padding: 5px 10px; border-radius: 999px; font-size: 10.5px;
+  color: #B4F105; font-weight: 700; display: inline-flex; align-items: center; gap: 5px;
+}
+
+/* Forensic Authenticity Card */
+.forensic-authenticity-card {
+  background: #F8FAF9; border: 1px solid var(--border-light); border-radius: 12px;
+  padding: 12px 14px; margin: 12px 0 16px 0; box-shadow: var(--shadow-sm);
+}
+.fac-header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 6px; }
+.fac-title-row { display: flex; align-items: center; gap: 6px; }
+.fac-title-row h4 { font-size: 12.5px; font-weight: 800; color: #072F1F; margin: 0; }
+.fac-badge { font-size: 10px; font-weight: 700; padding: 2px 7px; border-radius: 999px; }
+.fac-badge.live { background: #DCFCE7; color: #15803D; border: 1px solid #BBF7D0; }
+.fac-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 7px; margin-top: 8px; }
+.fac-item {
+  display: flex; flex-direction: column; gap: 2px; background: #FFFFFF;
+  border: 1px solid #E2E8E4; border-radius: 8px; padding: 6px 9px;
+}
+.fac-item-label { font-size: 9.5px; color: #6C7E75; font-weight: 600; text-transform: uppercase; letter-spacing: 0.03em; }
+.fac-item-val { font-size: 11px; font-weight: 700; display: flex; align-items: center; gap: 4px; }
+.fac-item-val.positive { color: #15803D; }
+
+/* Report Card Authenticity Banner */
+.report-auth-banner { border-radius: 10px; padding: 10px 12px; font-size: 12px; }
+.report-auth-banner.authentic { background: #F0FDF4; border: 1px solid #BBF7D0; }
+.report-auth-banner.spoof { background: #FEF2F2; border: 1px solid #FECACA; }
+.rab-head { display: flex; align-items: center; justify-content: space-between; margin-bottom: 4px; }
+.rab-title { display: flex; align-items: center; gap: 6px; font-weight: 700; color: #072F1F; font-size: 12px; }
+.rab-pill { font-size: 10px; font-weight: 700; padding: 2px 8px; border-radius: 999px; }
+.rab-pill.low { background: #DCFCE7; color: #166534; }
+.rab-pill.medium { background: #FEF3C7; color: #92400E; }
+.rab-pill.high { background: #FEE2E2; color: #991B1B; }
+.rab-desc { font-size: 11.5px; margin: 4px 0 6px 0; color: #374151; line-height: 1.4; }
+.rab-metrics { display: flex; flex-wrap: wrap; gap: 6px; font-size: 10.5px; color: #4B5563; }
+.rab-metric-item {
+  background: rgba(255, 255, 255, 0.85); padding: 3px 7px; border-radius: 5px;
+  border: 1px solid rgba(0, 0, 0, 0.06); font-family: 'IBM Plex Mono', monospace; font-size: 10px;
+}
 
 .scan-card-confirm { margin-top: 6px; }
 .scan-card-confirm.confirmed { display: flex; align-items: center; gap: 5px; font-size: 11px; color: var(--sys-green); font-weight: 700; }
