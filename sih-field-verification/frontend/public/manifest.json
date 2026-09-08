@@ -1,0 +1,17 @@
+{
+  "name": "Field Verification System",
+  "short_name": "FieldVerify",
+  "description": "Digital chain-of-custody for presumptive field drug testing with AI verification",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#090d16",
+  "theme_color": "#0d9488",
+  "icons": [
+    {
+      "src": "/icon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any maskable"
+    }
+  ]
+}

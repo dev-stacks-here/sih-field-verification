@@ -6,6 +6,7 @@ import {
   AlertOctagon,
 } from "lucide-react";
 import { api } from "./api.js";
+import LandingPage from "./LandingPage.jsx";
 
 // ---------- helpers ----------
 
@@ -309,6 +310,13 @@ function LoginScreen({ onLogin }) {
         {error && <div className="form-error">{error}</div>}
         <button type="submit" className="btn btn-primary btn-block" disabled={busy}>
           {busy ? <Loader2 size={16} className="spin" /> : "Sign in"}
+        </button>
+        <button
+          type="button"
+          className="btn-demo-fill"
+          onClick={() => { setUserId("R.SHARMA"); setPassword("Field@123"); setError(""); }}
+        >
+          ⚡ Autofill Demo Credentials (R.SHARMA)
         </button>
       </form>
 
@@ -788,6 +796,7 @@ function LogScreen({ onBack }) {
 // ---------- app shell ----------
 
 export default function App() {
+  const [viewMode, setViewMode] = useState("portal"); // "portal" (landing website) or "app" (scanner)
   const [screen, setScreen] = useState("login");
   const [operator, setOperator] = useState(null);
   const [restoring, setRestoring] = useState(true);
@@ -808,8 +817,22 @@ export default function App() {
       .finally(() => setRestoring(false));
   }, []);
 
-  const handleLogin = (op) => { setOperator(op); setScreen("home"); };
+  const handleLogin = (op) => { setOperator(op); setScreen("home"); setViewMode("app"); };
   const handleLogout = () => { api.setToken(null); setOperator(null); setScreen("login"); setSessionCaptures([]); };
+
+  const handleQuickDemoLogin = async () => {
+    try {
+      const { token, operator: op } = await api.login("R.SHARMA", "Field@123");
+      api.setToken(token);
+      setOperator(op);
+      setSessionCaptures([]);
+      setScreen("scan");
+      setViewMode("app");
+    } catch (e) {
+      setScreen("login");
+      setViewMode("app");
+    }
+  };
 
   const handleCaptured = useCallback((capture) => {
     setPendingCapture(capture);
@@ -862,6 +885,47 @@ export default function App() {
     }
   };
 
+  const renderPhoneApp = (isEmbedded = false) => (
+    <div className={`fvs-stage ${isEmbedded ? "embedded-stage" : ""}`}>
+      <div className={`fvs-phone ${isEmbedded ? "embedded-phone" : ""}`}>
+        <div className="fvs-notch" />
+        <div className="fvs-screen">
+          {screen === "login" && <LoginScreen onLogin={handleLogin} />}
+          {screen === "home" && operator && (
+            <HomeScreen
+              operator={operator}
+              onNewScan={() => { setSessionCaptures([]); setScreen("scan"); }}
+              onOpenLog={() => setScreen("log")}
+              onLogout={handleLogout}
+            />
+          )}
+          {screen === "scan" && (
+            <ScanScreen
+              captureCount={sessionCaptures.length}
+              onCancel={() => setScreen(operator ? "home" : "login")}
+              onCaptured={handleCaptured}
+            />
+          )}
+          {screen === "result" && pendingCapture && (
+            <ResultScreen
+              capture={pendingCapture}
+              onAcknowledgeLocation={handleAcknowledgeLocation}
+              onContinue={handleContinue}
+              onEnd={handleEnd}
+              submitting={submitting}
+              submitError={submitError}
+            />
+          )}
+          {screen === "report" && (
+            <ReportScreen records={reportRecords} onDone={() => setScreen(operator ? "home" : "login")} />
+          )}
+          {screen === "log" && <LogScreen onBack={() => setScreen("home")} />}
+        </div>
+      </div>
+      {!isEmbedded && <p className="stage-caption">Field Verification — presumptive result tool</p>}
+    </div>
+  );
+
   if (restoring) {
     return (
       <div className="fvs-app">
@@ -880,47 +944,41 @@ export default function App() {
     );
   }
 
+  if (viewMode === "portal") {
+    return (
+      <div className="fvs-app">
+        <style>{CSS}</style>
+        <LandingPage
+          onLaunchApp={() => setViewMode("app")}
+          onQuickDemoLogin={handleQuickDemoLogin}
+          onOpenLogin={() => { setScreen("login"); setViewMode("app"); }}
+          appElement={renderPhoneApp(true)}
+        />
+      </div>
+    );
+  }
+
   return (
     <div className="fvs-app">
       <style>{CSS}</style>
-      <div className="fvs-stage">
-        <div className="fvs-phone">
-          <div className="fvs-notch" />
-          <div className="fvs-screen">
-            {screen === "login" && <LoginScreen onLogin={handleLogin} />}
-            {screen === "home" && operator && (
-              <HomeScreen
-                operator={operator}
-                onNewScan={() => { setSessionCaptures([]); setScreen("scan"); }}
-                onOpenLog={() => setScreen("log")}
-                onLogout={handleLogout}
-              />
-            )}
-            {screen === "scan" && (
-              <ScanScreen
-                captureCount={sessionCaptures.length}
-                onCancel={() => setScreen("home")}
-                onCaptured={handleCaptured}
-              />
-            )}
-            {screen === "result" && pendingCapture && (
-              <ResultScreen
-                capture={pendingCapture}
-                onAcknowledgeLocation={handleAcknowledgeLocation}
-                onContinue={handleContinue}
-                onEnd={handleEnd}
-                submitting={submitting}
-                submitError={submitError}
-              />
-            )}
-            {screen === "report" && (
-              <ReportScreen records={reportRecords} onDone={() => setScreen("home")} />
-            )}
-            {screen === "log" && <LogScreen onBack={() => setScreen("home")} />}
-          </div>
+      <div className="portal-app-nav-bar">
+        <button className="btn-portal-back" onClick={() => setViewMode("portal")}>
+          ← Back to Public Website & Downloads
+        </button>
+        <div className="portal-nav-right">
+          {operator ? (
+            <span className="operator-pill">
+              <User size={12} /> {operator.name}
+            </span>
+          ) : (
+            <button className="btn-portal-signin" onClick={() => setScreen("login")}>
+              Officer Sign In
+            </button>
+          )}
+          <span className="portal-app-tag">● Live Web Scanner</span>
         </div>
-        <p className="stage-caption">Field Verification — presumptive result tool</p>
       </div>
+      {renderPhoneApp(false)}
     </div>
   );
 }
@@ -1229,4 +1287,906 @@ const CSS = `
 .log-screen { padding: 20px 18px; gap: 4px; }
 .log-topbar { display: flex; align-items: center; gap: 12px; margin-bottom: 18px; }
 .log-topbar h2 { font-size: 16px; font-weight: 600; margin: 0; }
+
+/* ── PUBLIC PORTAL & DOWNLOAD CENTER ── */
+.landing-portal {
+  background: #070B11;
+  color: #E2E8F0;
+  min-height: 100vh;
+  font-family: 'IBM Plex Sans', -apple-system, sans-serif;
+  overflow-x: hidden;
+}
+
+.portal-header {
+  position: sticky;
+  top: 0;
+  z-index: 100;
+  background: rgba(7, 11, 17, 0.88);
+  backdrop-filter: blur(16px);
+  border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+.portal-nav-container {
+  max-width: 1240px;
+  margin: 0 auto;
+  padding: 14px 24px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 20px;
+}
+
+.portal-brand {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  cursor: pointer;
+}
+
+.brand-badge {
+  width: 38px;
+  height: 38px;
+  border-radius: 10px;
+  background: rgba(13, 148, 136, 0.16);
+  border: 1px solid #0D9488;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: #2DD4BF;
+  box-shadow: 0 0 16px rgba(13, 148, 136, 0.35);
+}
+
+.brand-text {
+  display: flex;
+  flex-direction: column;
+}
+
+.brand-name {
+  font-size: 15px;
+  font-weight: 700;
+  color: #F8FAFC;
+  letter-spacing: -0.2px;
+}
+
+.brand-tag {
+  font-size: 11px;
+  font-family: 'IBM Plex Mono', monospace;
+  color: #0D9488;
+  font-weight: 600;
+}
+
+.portal-nav-links {
+  display: flex;
+  align-items: center;
+  gap: 24px;
+}
+
+.portal-nav-links a {
+  color: #94A3B8;
+  text-decoration: none;
+  font-size: 13.5px;
+  font-weight: 500;
+  transition: color 0.18s ease;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.portal-nav-links a:hover {
+  color: #2DD4BF;
+}
+
+.portal-nav-actions {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.btn-portal-primary {
+  background: #0D9488;
+  color: #FFFFFF;
+  border: none;
+  border-radius: 8px;
+  padding: 9px 16px;
+  font-size: 13px;
+  font-weight: 600;
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  cursor: pointer;
+  box-shadow: 0 4px 14px rgba(13, 148, 136, 0.35);
+  transition: all 0.2s;
+}
+
+.btn-portal-primary:hover {
+  background: #0F766E;
+  transform: translateY(-1px);
+}
+
+.btn-portal-secondary {
+  background: rgba(255, 255, 255, 0.05);
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  color: #E2E8F0;
+  border-radius: 8px;
+  padding: 8px 14px;
+  font-size: 13px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.btn-portal-secondary:hover {
+  background: rgba(255, 255, 255, 0.1);
+  border-color: rgba(255, 255, 255, 0.25);
+}
+
+/* ── HERO SECTION ── */
+.portal-hero {
+  position: relative;
+  max-width: 1240px;
+  margin: 0 auto;
+  padding: 56px 24px 80px;
+  display: grid;
+  grid-template-columns: 1.12fr 0.88fr;
+  gap: 48px;
+  align-items: center;
+}
+
+.hero-glow {
+  position: absolute;
+  border-radius: 50%;
+  filter: blur(100px);
+  pointer-events: none;
+  z-index: 0;
+}
+
+.glow-1 {
+  width: 440px;
+  height: 440px;
+  background: radial-gradient(circle, rgba(13, 148, 136, 0.22) 0%, transparent 70%);
+  top: 20px;
+  left: -80px;
+}
+
+.glow-2 {
+  width: 500px;
+  height: 500px;
+  background: radial-gradient(circle, rgba(56, 189, 248, 0.12) 0%, transparent 70%);
+  bottom: -40px;
+  right: -60px;
+}
+
+.portal-hero-content {
+  position: relative;
+  z-index: 1;
+}
+
+.hero-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  background: rgba(13, 148, 136, 0.12);
+  border: 1px solid rgba(45, 212, 191, 0.35);
+  border-radius: 999px;
+  padding: 5px 14px;
+  color: #2DD4BF;
+  font-size: 12px;
+  font-weight: 600;
+  margin-bottom: 22px;
+}
+
+.badge-sparkle {
+  color: #F59E0B;
+}
+
+.hero-headline {
+  font-size: 44px;
+  font-weight: 800;
+  line-height: 1.14;
+  letter-spacing: -1.2px;
+  color: #F8FAFC;
+  margin: 0 0 18px 0;
+}
+
+.hero-gradient {
+  background: linear-gradient(135deg, #2DD4BF 0%, #38BDF8 60%, #818CF8 100%);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+}
+
+.hero-subhead {
+  font-size: 16px;
+  line-height: 1.62;
+  color: #94A3B8;
+  margin: 0 0 32px 0;
+  max-width: 560px;
+}
+
+.hero-cta-group {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  margin-bottom: 40px;
+}
+
+.hero-cta-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 12px 22px;
+  border-radius: 10px;
+  font-size: 14px;
+  font-weight: 600;
+  text-decoration: none;
+  cursor: pointer;
+  border: none;
+  transition: all 0.2s ease;
+}
+
+.hero-cta-btn.primary {
+  background: #0D9488;
+  color: #FFFFFF;
+  box-shadow: 0 4px 20px rgba(13, 148, 136, 0.4);
+}
+
+.hero-cta-btn.primary:hover {
+  background: #0F766E;
+  transform: translateY(-2px);
+}
+
+.hero-cta-btn.secondary {
+  background: rgba(255, 255, 255, 0.06);
+  border: 1px solid rgba(255, 255, 255, 0.16);
+  color: #F1F5F9;
+}
+
+.hero-cta-btn.secondary:hover {
+  background: rgba(255, 255, 255, 0.12);
+  border-color: rgba(255, 255, 255, 0.26);
+}
+
+.hero-cta-btn.accent {
+  background: rgba(217, 119, 6, 0.14);
+  border: 1px solid rgba(245, 158, 11, 0.4);
+  color: #FBBF24;
+}
+
+.hero-cta-btn.accent:hover {
+  background: rgba(217, 119, 6, 0.24);
+}
+
+.hero-stats-grid {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 14px;
+}
+
+.stat-card {
+  background: rgba(22, 33, 44, 0.65);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 12px;
+  padding: 14px 16px;
+  transition: border-color 0.2s;
+}
+
+.stat-card:hover {
+  border-color: rgba(45, 212, 191, 0.3);
+}
+
+.stat-icon-wrapper {
+  color: #2DD4BF;
+  margin-bottom: 6px;
+}
+
+.stat-value {
+  font-size: 15px;
+  font-weight: 700;
+  color: #F8FAFC;
+}
+
+.stat-label {
+  font-size: 12px;
+  color: #94A3B8;
+  line-height: 1.4;
+  margin-top: 3px;
+}
+
+/* ── PREVIEW PHONE EMBED ── */
+.portal-app-preview {
+  position: relative;
+  z-index: 1;
+  background: #05090D;
+  border: 1px solid #1E293B;
+  border-radius: 24px;
+  overflow: hidden;
+  box-shadow: 0 30px 70px -15px rgba(0, 0, 0, 0.85);
+}
+
+.preview-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 12px 18px;
+  background: #0F172A;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+}
+
+.preview-dots {
+  display: flex;
+  gap: 6px;
+}
+
+.dot {
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+}
+
+.dot.red { background: #EF4444; }
+.dot.yellow { background: #F59E0B; }
+.dot.green { background: #10B981; }
+
+.preview-title {
+  font-size: 11.5px;
+  font-family: 'IBM Plex Mono', monospace;
+  color: #94A3B8;
+}
+
+.preview-fullscreen-btn {
+  background: transparent;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  color: #38BDF8;
+  border-radius: 6px;
+  padding: 4px 8px;
+  font-size: 11.5px;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+}
+
+.preview-fullscreen-btn:hover {
+  background: rgba(56, 189, 248, 0.12);
+}
+
+.preview-body {
+  display: flex;
+  justify-content: center;
+  align-items: flex-start;
+  padding: 16px;
+  background: #090D16;
+  max-height: 600px;
+  overflow: hidden;
+}
+
+.preview-footer {
+  padding: 10px 16px;
+  background: #0F172A;
+  border-top: 1px solid rgba(255, 255, 255, 0.06);
+  font-size: 11.5px;
+  color: #64748B;
+  text-align: center;
+}
+
+.embedded-stage {
+  min-height: auto !important;
+  padding: 0 !important;
+  background: transparent !important;
+}
+
+.embedded-phone {
+  transform: scale(0.8);
+  transform-origin: top center;
+  margin-bottom: -150px;
+}
+
+/* ── SECTIONS ── */
+.portal-section {
+  max-width: 1240px;
+  margin: 0 auto;
+  padding: 80px 24px;
+}
+
+.section-header {
+  text-align: center;
+  max-width: 700px;
+  margin: 0 auto 48px;
+}
+
+.section-kicker {
+  color: #2DD4BF;
+  font-size: 12px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 1.2px;
+  margin-bottom: 8px;
+}
+
+.section-title {
+  font-size: 34px;
+  font-weight: 800;
+  color: #F8FAFC;
+  letter-spacing: -0.7px;
+  margin: 0 0 14px 0;
+}
+
+.section-description {
+  font-size: 15.5px;
+  line-height: 1.6;
+  color: #94A3B8;
+  margin: 0;
+}
+
+/* ── DOWNLOADS SECTION ── */
+.downloads-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
+  gap: 26px;
+}
+
+.download-card {
+  background: #0E1520;
+  border: 1px solid #1E293B;
+  border-radius: 18px;
+  padding: 30px;
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  transition: transform 0.2s ease, border-color 0.2s ease;
+}
+
+.download-card:hover {
+  transform: translateY(-4px);
+  border-color: #334155;
+}
+
+.download-card.featured {
+  border-color: #0D9488;
+  background: linear-gradient(180deg, #121F2B 0%, #0D1520 100%);
+  box-shadow: 0 10px 30px -10px rgba(13, 148, 136, 0.25);
+}
+
+.card-top-tag {
+  position: absolute;
+  top: -11px;
+  right: 22px;
+  font-size: 11px;
+  font-weight: 700;
+  padding: 3px 12px;
+  border-radius: 999px;
+  background: #0D9488;
+  color: #FFFFFF;
+}
+
+.card-top-tag.neutral {
+  background: #1E293B;
+  color: #94A3B8;
+  border: 1px solid #334155;
+}
+
+.download-card-icon {
+  width: 52px;
+  height: 52px;
+  border-radius: 12px;
+  background: rgba(13, 148, 136, 0.14);
+  border: 1px solid rgba(45, 212, 191, 0.3);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: #2DD4BF;
+  margin-bottom: 20px;
+}
+
+.download-card-title {
+  font-size: 19px;
+  font-weight: 700;
+  color: #F8FAFC;
+  margin: 0 0 10px 0;
+}
+
+.download-card-text {
+  font-size: 13.5px;
+  line-height: 1.62;
+  color: #94A3B8;
+  flex-grow: 1;
+  margin: 0 0 22px 0;
+}
+
+.download-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  font-size: 11.5px;
+  color: #64748B;
+  font-family: 'IBM Plex Mono', monospace;
+  margin-bottom: 22px;
+  border-top: 1px solid rgba(255, 255, 255, 0.06);
+  padding-top: 14px;
+}
+
+.card-actions {
+  display: flex;
+  flex-direction: column;
+  gap: 9px;
+}
+
+.btn-download {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  padding: 11px 18px;
+  border-radius: 9px;
+  font-size: 13px;
+  font-weight: 600;
+  text-decoration: none;
+  cursor: pointer;
+  border: none;
+  transition: all 0.18s;
+  width: 100%;
+}
+
+.btn-download.primary {
+  background: #0D9488;
+  color: #FFFFFF;
+}
+
+.btn-download.primary:hover {
+  background: #0F766E;
+}
+
+.btn-download.secondary {
+  background: rgba(255, 255, 255, 0.05);
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  color: #CBD5E1;
+}
+
+.btn-download.secondary:hover {
+  background: rgba(255, 255, 255, 0.1);
+}
+
+/* ── STEPS SECTION ── */
+.steps-container {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+  gap: 20px;
+}
+
+.step-card {
+  background: #0E1520;
+  border: 1px solid #1E293B;
+  border-radius: 14px;
+  padding: 26px;
+  position: relative;
+}
+
+.step-number {
+  font-size: 34px;
+  font-weight: 800;
+  color: #0D9488;
+  font-family: 'IBM Plex Mono', monospace;
+  margin-bottom: 12px;
+}
+
+.step-title {
+  font-size: 16px;
+  font-weight: 700;
+  color: #F8FAFC;
+  margin: 0 0 10px 0;
+}
+
+.step-text {
+  font-size: 13.5px;
+  line-height: 1.6;
+  color: #94A3B8;
+  margin: 0;
+}
+
+/* ── ARCHITECTURE SECTION ── */
+.arch-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+  gap: 22px;
+}
+
+.arch-item {
+  background: #0E1520;
+  border: 1px solid #1E293B;
+  border-radius: 14px;
+  padding: 26px;
+}
+
+.arch-icon {
+  color: #2DD4BF;
+  margin-bottom: 16px;
+}
+
+.arch-item h3 {
+  font-size: 16px;
+  font-weight: 700;
+  color: #F8FAFC;
+  margin: 0 0 10px 0;
+}
+
+.arch-item p {
+  font-size: 13.5px;
+  line-height: 1.6;
+  color: #94A3B8;
+  margin: 0;
+}
+
+.arch-item code {
+  font-family: 'IBM Plex Mono', monospace;
+  background: rgba(255, 255, 255, 0.08);
+  padding: 2px 6px;
+  border-radius: 4px;
+  color: #38BDF8;
+}
+
+/* ── DEMO BANNER ── */
+.demo-banner {
+  background: linear-gradient(135deg, #0F1F2C 0%, #152A3B 100%);
+  border: 1px solid rgba(45, 212, 191, 0.3);
+  border-radius: 20px;
+  padding: 44px;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 28px;
+  box-shadow: 0 16px 40px -10px rgba(0, 0, 0, 0.5);
+}
+
+.demo-banner-content {
+  max-width: 600px;
+}
+
+.demo-badge {
+  display: inline-block;
+  background: rgba(245, 158, 11, 0.16);
+  border: 1px solid rgba(245, 158, 11, 0.4);
+  color: #FBBF24;
+  font-size: 11.5px;
+  font-weight: 700;
+  padding: 3px 10px;
+  border-radius: 999px;
+  margin-bottom: 12px;
+}
+
+.demo-banner-content h2 {
+  font-size: 28px;
+  font-weight: 800;
+  color: #F8FAFC;
+  margin: 0 0 10px 0;
+  letter-spacing: -0.5px;
+}
+
+.demo-banner-content p {
+  font-size: 14.5px;
+  color: #94A3B8;
+  line-height: 1.6;
+  margin: 0 0 18px 0;
+}
+
+.demo-credentials-box {
+  display: inline-flex;
+  gap: 20px;
+  background: rgba(0, 0, 0, 0.35);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  padding: 8px 16px;
+  border-radius: 8px;
+  font-size: 13px;
+  color: #CBD5E1;
+}
+
+.demo-credentials-box strong {
+  color: #2DD4BF;
+  font-family: 'IBM Plex Mono', monospace;
+}
+
+.demo-banner-actions {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  min-width: 240px;
+}
+
+.btn-banner-primary {
+  background: #0D9488;
+  color: #FFFFFF;
+  border: none;
+  border-radius: 10px;
+  padding: 13px 20px;
+  font-size: 14px;
+  font-weight: 600;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  box-shadow: 0 4px 16px rgba(13, 148, 136, 0.4);
+}
+
+.btn-banner-primary:hover {
+  background: #0F766E;
+}
+
+.btn-banner-secondary {
+  background: rgba(255, 255, 255, 0.06);
+  border: 1px solid rgba(255, 255, 255, 0.15);
+  color: #F1F5F9;
+  border-radius: 10px;
+  padding: 11px 18px;
+  font-size: 13px;
+  font-weight: 500;
+  text-decoration: none;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+}
+
+/* ── FOOTER ── */
+.portal-footer {
+  background: #04070B;
+  border-top: 1px solid #1E293B;
+  padding: 60px 24px 32px;
+}
+
+.footer-content {
+  max-width: 1240px;
+  margin: 0 auto;
+  display: grid;
+  grid-template-columns: 2fr 1fr 1fr 1fr;
+  gap: 40px;
+  margin-bottom: 48px;
+}
+
+.brand-col .portal-brand {
+  margin-bottom: 14px;
+}
+
+.footer-tagline {
+  font-size: 13.5px;
+  line-height: 1.6;
+  color: #64748B;
+  max-width: 320px;
+}
+
+.footer-heading {
+  font-size: 13px;
+  font-weight: 700;
+  color: #F8FAFC;
+  text-transform: uppercase;
+  letter-spacing: 0.8px;
+  margin-bottom: 14px;
+}
+
+.footer-col a, .footer-link-btn {
+  display: block;
+  color: #94A3B8;
+  font-size: 13px;
+  text-decoration: none;
+  margin-bottom: 10px;
+  background: transparent;
+  border: none;
+  padding: 0;
+  cursor: pointer;
+  text-align: left;
+  font-family: inherit;
+}
+
+.footer-col a:hover, .footer-link-btn:hover {
+  color: #2DD4BF;
+}
+
+.footer-bottom {
+  max-width: 1240px;
+  margin: 0 auto;
+  border-top: 1px solid rgba(255, 255, 255, 0.06);
+  padding-top: 24px;
+  display: flex;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 12px;
+  font-size: 12px;
+  color: #475569;
+}
+
+/* ── APP FULLSCREEN TOP BAR ── */
+.portal-app-nav-bar {
+  background: #0B111A;
+  border-bottom: 1px solid #1E293B;
+  padding: 12px 24px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.btn-portal-back {
+  background: rgba(255, 255, 255, 0.06);
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  color: #2DD4BF;
+  border-radius: 7px;
+  padding: 7px 14px;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.18s;
+}
+
+.btn-portal-back:hover {
+  background: rgba(45, 212, 191, 0.12);
+  border-color: #2DD4BF;
+}
+
+.portal-nav-right {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.operator-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  background: rgba(255, 255, 255, 0.06);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  padding: 5px 12px;
+  border-radius: 999px;
+  font-size: 12px;
+  color: #E2E8F0;
+}
+
+.portal-app-tag {
+  color: #10B981;
+  font-size: 12px;
+  font-weight: 600;
+  font-family: 'IBM Plex Mono', monospace;
+}
+
+.btn-portal-signin {
+  background: transparent;
+  border: 1px solid rgba(255, 255, 255, 0.15);
+  color: #E2E8F0;
+  padding: 5px 12px;
+  border-radius: 6px;
+  font-size: 12px;
+  cursor: pointer;
+}
+
+.btn-demo-fill {
+  width: 100%;
+  background: rgba(217, 119, 6, 0.12);
+  border: 1px dashed rgba(245, 158, 11, 0.5);
+  color: #FBBF24;
+  border-radius: 8px;
+  padding: 9px;
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+  margin-top: 10px;
+  transition: all 0.2s;
+}
+
+.btn-demo-fill:hover {
+  background: rgba(217, 119, 6, 0.22);
+}
+
+@media (max-width: 960px) {
+  .portal-hero {
+    grid-template-columns: 1fr;
+    padding-top: 36px;
+  }
+  .portal-nav-links {
+    display: none;
+  }
+  .hero-headline {
+    font-size: 34px;
+  }
+  .footer-content {
+    grid-template-columns: 1fr 1fr;
+  }
+}
 `;
+
