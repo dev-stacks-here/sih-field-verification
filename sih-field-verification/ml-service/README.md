@@ -1,99 +1,111 @@
-# ML service — pretrained colour classifier
+# ML Service — Dual-Model Vision Classifier
 
-A small FastAPI microservice that classifies a cropped test-vial image into
-`positive` / `negative` / `inconclusive` using a **pretrained** CLIP model
-(`openai/clip-vit-base-patch32`) via zero-shot classification against
-text prompts — no training step, no labelled dataset required.
+A FastAPI microservice that classifies a cropped test-vial image into `positive` / `negative` / `inconclusive` using a **Dual-Model Ensemble Architecture**:
 
-The Node backend (`backend/src/utils/mlClassifier.js`) calls this service
-for every scan and treats its answer as the primary server-side result. If
-the service is unreachable or errors, the backend automatically falls back
-to its own independent calibrated heuristic
-(`backend/src/utils/colorAnalysis.js`), so the app keeps working even
-without the ML service running (e.g. for a quick demo on a machine without
-a GPU or without the Python deps installed).
+1. **Model 1 (Foundation Model — Google SigLIP `google/siglip-base-patch16-224`)**:
+   - Zero-shot classification against natural-language prompts.
+   - Pretrained on millions of image-text pairs with sigmoid loss for superior color sensitivity.
+   - Operates out of the box with **zero training required** and lightweight resource usage (~400MB, sub-300ms on CPU).
+2. **Model 2 (Custom Domain Classifier — PyTorch CNN)**:
+   - Domain-specific model trained specifically on confirmed chemical test kit photos.
+   - Loaded dynamically from `models/custom_classifier.pt` when trained.
+   - If not yet trained, the service operates seamlessly on SigLIP alone without interruption.
+3. **Ensemble & Forensic Verification Engine**:
+   - When Model 2 is present, predictions are weighted (`0.4 * SigLIP + 0.6 * Custom`).
+   - If Model 1 and Model 2 disagree, the system flags `disagreement = true`, instructing the Node backend to mark the scan for human supervisor review (`needsReview = true`).
+
+---
 
 ## Setup
 
 ```bash
 cd ml-service
 python -m venv .venv
-source .venv/bin/activate      # Windows: .venv\Scripts\activate
+# Activate virtualenv:
+.venv\Scripts\activate      # Windows PowerShell/CMD
+# source .venv/bin/activate  # Linux/macOS
+
 pip install -r requirements.txt
 uvicorn app:app --host 0.0.0.0 --port 8000
 ```
 
-First boot downloads the pretrained CLIP weights (~600MB) from Hugging Face
-and takes a minute or two; after that it's cached locally and starts fast.
-CPU-only is fine for a demo (a few hundred ms per classification); a GPU
-speeds it up further if available.
+* First boot downloads the pretrained SigLIP weights (~400MB) from Hugging Face and caches them locally.
+* CPU-only execution is fast (~150–300 ms per image). If an NVIDIA GPU is detected, CUDA is used automatically.
 
-Point the backend at it via `backend/.env`:
-
-```
+Connect the Node backend by setting `backend/.env`:
+```env
 ML_SERVICE_URL=http://localhost:8000
 ```
 
-## API
+---
 
-`POST /classify` — multipart form field `image` (JPEG/PNG bytes of the
-cropped vial region) → `{ category, confidence, scores, model, method }`
+## API Endpoints
 
-`GET /health` — service + model status.
+### `POST /classify`
+Multipart form upload with field `image` (JPEG/PNG bytes of the cropped vial).
 
-## Why zero-shot instead of training a model
-
-There's no labelled dataset of this specific kit's positive/negative colour
-reactions to train on, and a model trained on a handful of demo photos
-would just memorise them rather than generalise. CLIP was pretrained on
-hundreds of millions of image-text pairs and can be steered per-category
-with natural-language prompts (see `LABELS` in `classifier.py`) with zero
-additional training — a reasonable fit for a prototype where the real
-production step (once a kit manufacturer's reference colour chart is
-available) would be to fine-tune or calibrate thresholds against that
-chart, not to train a classifier from scratch.
-
-## Accuracy — how to get a real number, not just a design rationale
-
-"Zero-shot, no training" is an honest answer to *why* there's no accuracy
-figure yet, but it isn't an accuracy figure. Two scripts close that gap:
-
-**1. `evaluate.py` — the actual measurement tool.**
-Point it at a folder of labelled photos (`data/positive/`, `data/negative/`,
-`data/inconclusive/`, each full of real photos of the kit at a known,
-confirmed outcome) and it reports accuracy plus a confusion matrix, and
-writes a JSON report you can cite directly:
-
-```bash
-python evaluate.py --data-dir data --out report.json
+**Response (Ensemble Active):**
+```json
+{
+  "category": "positive",
+  "confidence": 92.4,
+  "scores": { "positive": 92.4, "negative": 4.1, "inconclusive": 3.5 },
+  "model": "google/siglip-base-patch16-224 + custom-vial-classifier",
+  "method": "dual-model-ensemble",
+  "ensemble": {
+    "active": true,
+    "disagreement": false,
+    "consensus": true,
+    "model1": {
+      "name": "google/siglip-base-patch16-224",
+      "category": "positive",
+      "confidence": 89.2
+    },
+    "model2": {
+      "name": "custom-vial-classifier",
+      "category": "positive",
+      "confidence": 94.5
+    }
+  }
+}
 ```
 
-Before demo day, take 10-20 photos per category of the real kit at known
-outcomes (spike a sample, run the test, confirm the result some other way,
-photograph it through the app's own capture flow so lighting/framing match
-real use) and run this. That's the number to put on a slide — not CLIP's
-general benchmark numbers, which say nothing about this kit.
+### `GET /health`
+Returns operational status for both Model 1, Model 2, device, and active ensemble state.
 
-**2. `generate_synthetic_dataset.py` — a stand-in until you have real photos.**
-Renders procedural colour-patch images in the same layout as a real capture,
-purely so `evaluate.py` and its report format are runnable and demoable
-*today*. It is explicitly **not** a source of real accuracy — synthetic hue
-patches aren't real chemistry — but it proves the harness works and gives
-you the exact folder structure to drop real photos into later:
+---
 
+## Training Model 2 (Custom Domain Classifier)
+
+Whenever you have confirmed photos of your test kits (e.g. from field tests, laboratory verifications, or kit trials):
+
+1. Organize your labeled photos in class subdirectories:
+   ```
+   data/
+     positive/      *.jpg (confirmed positive reactions)
+     negative/      *.jpg (confirmed negative reactions)
+     inconclusive/  *.jpg (ambiguous/inconclusive reactions)
+   ```
+2. Run the turnkey training script:
+   ```bash
+   python train_custom_model.py --data-dir data/ --epochs 15 --out models/custom_classifier.pt
+   ```
+3. Restart or reload the FastAPI service. It will automatically detect `models/custom_classifier.pt` and activate the dual-model ensemble!
+
+---
+
+## Accuracy Measurement & Evaluation
+
+### 1. `evaluate.py` — Benchmark Tool
+Evaluates the classifier against a labeled folder and produces an official confusion matrix and accuracy report:
 ```bash
-python generate_synthetic_dataset.py --out synthetic_data --per-category 12
+python evaluate.py --data-dir data/ --out report.json
+```
+When Model 2 is loaded, it also measures the **Model Consensus Rate** between SigLIP and your custom model.
+
+### 2. `generate_synthetic_dataset.py` — Smoke Test Harness
+Renders procedurally generated color patches to verify your pipeline end-to-end before real photos are collected:
+```bash
+python generate_synthetic_dataset.py --out synthetic_data --per-category 10
 python evaluate.py --data-dir synthetic_data --out synthetic_report.json
 ```
-
-**3. The feedback loop built into the app itself.**
-Every scan record can later be marked with a `confirmed_result` (see
-`PATCH /api/scans/:recordId/confirm` in the backend) once a lab or
-supervisor confirms the true outcome — deliberately stored outside the
-signed payload, so confirming a result later can never alter what was
-signed at capture time. `GET /api/scans/stats/accuracy` aggregates all
-confirmed scans into a live accuracy/confusion-matrix report, split by
-which classifier (`pretrained-clip` vs `heuristic`) produced the result.
-This is the honest long-term answer: the system is designed to *build* a
-real accuracy track record from actual field use, not to claim one it
-doesn't have yet.

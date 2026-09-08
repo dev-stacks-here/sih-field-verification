@@ -1,0 +1,43 @@
+# Dependencies
+node_modules/
+.venv/
+venv/
+env/
+__pycache__/
+*.py[cod]
+*$py.class
+
+# Environment & Secret variables
+.env
+*.env
+backend/.env
+backend/keys/*.pem
+!backend/keys/.gitkeep
+
+# Databases & Runtime data
+backend/data/*.db
+backend/data/*.db-wal
+backend/data/*.db-shm
+backend/uploads/*
+!backend/uploads/.gitkeep
+backend/data/.gitkeep
+
+# Model weights
+*.pt
+*.safetensors
+*.bin
+!ml-service/models/.gitkeep
+
+# Build artifacts
+dist/
+build/
+*.egg-info/
+synthetic_data/
+synthetic_report.json
+report.json
+
+# OS & Editor files
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/

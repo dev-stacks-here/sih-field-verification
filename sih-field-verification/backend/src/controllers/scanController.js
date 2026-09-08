@@ -114,6 +114,7 @@ async function createScan(req, res) {
     let serverAnalysis;
     let classificationMethod;
     let mlScores = null;
+    let ensembleDisagreement = false;
     try {
       const mlResult = await classifyWithPretrainedModel(buffer);
       serverAnalysis = {
@@ -123,9 +124,10 @@ async function createScan(req, res) {
         calibrationApplied: false,
       };
       mlScores = mlResult.scores;
-      classificationMethod = "pretrained-clip";
+      classificationMethod = mlResult.method || "siglip-base";
+      ensembleDisagreement = !!(mlResult.ensemble && mlResult.ensemble.disagreement);
     } catch (mlErr) {
-      console.warn("Pretrained ML classifier unavailable, falling back to heuristic:", mlErr.message);
+      console.warn("ML classifier unavailable, falling back to heuristic:", mlErr.message);
       try {
         serverAnalysis = await classifyFromImageBuffer(buffer);
         classificationMethod = "heuristic";
@@ -141,13 +143,12 @@ async function createScan(req, res) {
       const d = Math.abs(a - b) % 360;
       return Math.min(d, 360 - d);
     };
-    // We don't have the client's raw hue, only its category, so disagreement
-    // is judged at the category level: if client and server land in
-    // different buckets, or server confidence is weak, flag for review
-    // rather than silently trusting either side.
+    // Disagreement is judged at category level: if client and server land in
+    // different buckets, server confidence is weak, or dual-model ensemble
+    // models disagree, flag for review rather than silently trusting either side.
     const categoryDisagrees = serverAnalysis.category !== result;
     const lowServerConfidence = serverAnalysis.confidence < 55;
-    const needsReview = categoryDisagrees || lowServerConfidence;
+    const needsReview = categoryDisagrees || lowServerConfidence || ensembleDisagreement;
 
     const receivedAt = new Date().toISOString();
     const finalCapturedAt = capturedAt || receivedAt;

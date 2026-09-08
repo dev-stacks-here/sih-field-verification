@@ -1,39 +1,9 @@
 """
-Evaluates the pretrained CLIP classifier against a labelled folder of
-images and reports real accuracy + a confusion matrix, instead of citing
-CLIP's general-purpose benchmark numbers as if they applied to this kit.
+Evaluates the vision classification engine (SigLIP zero-shot and dual-model ensemble)
+against a labelled folder of images, reporting accuracy, confusion matrix, and model agreement.
 
-WHY THIS EXISTS
-----------------
-Before this script, the honest answer to "what's your model's accuracy?"
-was "we don't have one - there's no labelled dataset of this kit's actual
-colour reactions." That's a real gap, not something code alone can fix -
-you still need real photos of the kit at known outcomes. What this script
-does is remove every other excuse: point it at a folder of photos you (or
-your team, or the kit vendor) have taken and labelled, and it gives you an
-accuracy figure and confusion matrix you can put on a slide, in minutes.
-
-Until you have real kit photos, use generate_synthetic_dataset.py to build
-a synthetic set and smoke-test the pipeline end-to-end (it will NOT tell
-you real-world accuracy - synthetic colour patches are not real chemistry -
-but it proves the evaluation harness itself works and gives you a template
-folder structure to drop real photos into).
-
-USAGE
------
-Build (or generate) a folder like:
-
-    data/
-      positive/      *.jpg photos of confirmed positive reactions
-      negative/      *.jpg photos of confirmed negative reactions
-      inconclusive/  *.jpg photos of confirmed inconclusive/ambiguous cases
-
-Then:
-
-    python evaluate.py --data-dir data --out report.json
-
-This prints accuracy + a confusion matrix to the console and writes the
-same, plus every per-image prediction, to report.json for a slide/appendix.
+USAGE:
+    python evaluate.py --data-dir data/ --out report.json
 """
 import argparse
 import json
@@ -46,7 +16,7 @@ from PIL import Image
 import classifier
 
 CATEGORIES = classifier.CATEGORY_KEYS
-IMAGE_EXTS = {".jpg", ".jpeg", ".png"}
+IMAGE_EXTS = {".jpg", ".jpeg", ".png", ".webp"}
 
 
 def load_labelled_images(data_dir: Path):
@@ -71,12 +41,17 @@ def evaluate(data_dir: Path):
         )
         sys.exit(1)
 
-    print(f"Loading model... (first run downloads {classifier.MODEL_NAME})")
+    status = classifier.model_status()
+    print(f"Loading models... (Model 1: {classifier.MODEL_NAME})")
     classifier.load_model()
+    status = classifier.model_status()
+    ensemble_active = status.get("ensemble_active", False)
+    print(f"Operational Mode: {'Dual-Model Ensemble' if ensemble_active else 'Model 1 (SigLIP) Standalone'}")
 
     confusion = {actual: {predicted: 0 for predicted in CATEGORIES} for actual in CATEGORIES}
     predictions = []
     correct = 0
+    consensus_count = 0
     start = time.time()
 
     for path, actual in items:
@@ -86,22 +61,41 @@ def evaluate(data_dir: Path):
         except Exception as exc:
             print(f"  ! skipped {path.name}: {exc}", file=sys.stderr)
             continue
+
         predicted = result["category"]
         confusion[actual][predicted] += 1
         is_correct = predicted == actual
         correct += int(is_correct)
-        predictions.append({
+
+        ens_data = result.get("ensemble", {})
+        has_consensus = ens_data.get("consensus", True)
+        if has_consensus:
+            consensus_count += 1
+
+        pred_entry = {
             "file": str(path),
             "actual": actual,
             "predicted": predicted,
             "confidence": result["confidence"],
             "correct": is_correct,
-        })
+            "method": result.get("method"),
+            "ensemble": ens_data,
+        }
+        predictions.append(pred_entry)
+
         mark = "✓" if is_correct else "✗"
-        print(f"  {mark} {path.name}: actual={actual} predicted={predicted} ({result['confidence']:.1f}%)")
+        extra = ""
+        if ensemble_active:
+            m1_cat = ens_data.get("model1", {}).get("category", "")
+            m2_cat = ens_data.get("model2", {}).get("category", "")
+            agree_flag = "AGREE" if has_consensus else "DISAGREE"
+            extra = f" [M1:{m1_cat} M2:{m2_cat} => {agree_flag}]"
+
+        print(f"  {mark} {path.name}: actual={actual} predicted={predicted} ({result['confidence']:.1f}%){extra}")
 
     total = len(predictions)
     accuracy = (correct / total * 100) if total else 0.0
+    consensus_rate = (consensus_count / total * 100) if total else 100.0
     elapsed = time.time() - start
 
     print("\n=== Confusion matrix (rows = actual, columns = predicted) ===")
@@ -112,14 +106,19 @@ def evaluate(data_dir: Path):
         print(row)
 
     print(f"\nAccuracy: {correct}/{total} = {accuracy:.1f}%")
+    if ensemble_active:
+        print(f"Model Consensus Rate: {consensus_count}/{total} = {consensus_rate:.1f}%")
     print(f"Evaluated in {elapsed:.1f}s ({elapsed / total:.2f}s/image)" if total else "")
 
     return {
         "model": classifier.MODEL_NAME,
+        "mode": "dual-model-ensemble" if ensemble_active else "siglip-standalone",
+        "ensembleActive": ensemble_active,
         "dataDir": str(data_dir),
         "totalImages": total,
         "correct": correct,
         "accuracy": round(accuracy, 1),
+        "consensusRate": round(consensus_rate, 1) if ensemble_active else None,
         "confusionMatrix": confusion,
         "predictions": predictions,
     }
@@ -128,9 +127,9 @@ def evaluate(data_dir: Path):
 def main():
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     parser.add_argument("--data-dir", type=Path, default=Path("data"),
-                         help="Folder with positive/negative/inconclusive subfolders of labelled photos.")
+                        help="Folder with positive/negative/inconclusive subfolders of labelled photos.")
     parser.add_argument("--out", type=Path, default=Path("report.json"),
-                         help="Where to write the full JSON report.")
+                        help="Where to write the full JSON report.")
     args = parser.parse_args()
 
     report = evaluate(args.data_dir)

@@ -17,13 +17,14 @@ tamper-evident digital record with timestamp, GPS location, and operator ID.
     correction using the card as the neutral reference, and buckets hue into
     positive / negative / inconclusive. This gives the operator instant
     feedback but **is never trusted as the record of truth**.
-  - *Server-side, authoritative, pretrained model* (`ml-service/app.py` +
-    `backend/src/utils/mlClassifier.js`) — a FastAPI microservice classifies
-    the cropped vial region with a **pretrained CLIP model**
-    (`openai/clip-vit-base-patch32`), zero-shot against text prompts
-    describing each outcome category. No custom training or labelled
-    dataset is involved — see `ml-service/README.md` for why. This is the
-    primary source of the signed `result`.
+  - *Server-side, authoritative vision classification with dual-model ensemble*
+    (`ml-service/app.py` + `backend/src/utils/mlClassifier.js`) — a FastAPI
+    microservice classifies the cropped vial region using **Google SigLIP**
+    (`google/siglip-base-patch16-224`) zero-shot against text prompts describing
+    each outcome category, paired with an extensible **custom domain classifier**
+    (`models/custom_classifier.pt`). When both models are active, predictions are
+    ensembled, and any discrepancy between them automatically flags the record
+    for supervisor review. This is the primary source of the signed `result`.
   - *Server-side fallback, calibrated heuristic*
     (`backend/src/utils/colorAnalysis.js`) — if the ML service is
     unreachable, times out, or errors, the backend automatically falls back

@@ -48,8 +48,9 @@ async function classifyWithPretrainedModel(buffer) {
       category: data.category,
       confidence: Math.min(99, Math.max(1, Number(data.confidence) || 0)),
       scores: data.scores || null,
-      model: data.model || "clip-vit-base-patch32",
-      method: data.method || "zero-shot-clip-pretrained",
+      model: data.model || "google/siglip-base-patch16-224",
+      method: data.method || "zero-shot-siglip-pretrained",
+      ensemble: data.ensemble || null,
     };
   } finally {
     clearTimeout(timeout);

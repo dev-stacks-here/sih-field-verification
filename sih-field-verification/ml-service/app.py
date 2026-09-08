@@ -1,30 +1,14 @@
 """
-Pretrained-model colour classifier for the Field Verification System.
+Dual-Model Vision Classification Microservice for Field Verification.
 
-Deliberately uses zero-shot classification with a pretrained CLIP model
-(openai/clip-vit-base-patch32) instead of training a custom model:
-- No labelled dataset of this specific kit's positive/negative reactions
-  exists yet, so training a classifier from scratch would just be curve-fit
-  to a handful of demo photos.
-- CLIP was pretrained on hundreds of millions of image-text pairs and can be
-  steered with natural-language prompts describing each outcome category,
-  with zero additional training.
-- The Node backend still runs its own independent, calibrated heuristic
-  (backend/src/utils/colorAnalysis.js) as a cross-check. If this service is
-  unreachable, the backend falls back to that heuristic automatically, so
-  the app degrades gracefully rather than hard-failing on ML availability.
-
-For actual accuracy numbers (not just this design rationale), see
-evaluate.py - it runs this same classifier against a labelled folder of
-images and reports accuracy + a confusion matrix. Run it against real kit
-photos before citing an accuracy figure to judges.
-
-Run:
-    pip install -r requirements.txt
-    uvicorn app:app --host 0.0.0.0 --port 8000
-
-First request after boot will be slow (model download + load); subsequent
-requests are fast since the model stays resident in memory.
+Architecture:
+- Model 1 (Foundation): Google SigLIP (google/siglip-base-patch16-224)
+  Zero-shot classification against natural-language category prompts.
+- Model 2 (Domain-Trained): Lightweight PyTorch custom classifier
+  Loaded dynamically from models/custom_classifier.pt when trained.
+- Ensemble Engine: Combines Model 1 and Model 2, flags discrepancies for review.
+- Fallback: The Node backend maintains its own heuristic fallback in case this
+  service is unreachable.
 """
 import io
 import logging
@@ -38,7 +22,7 @@ import classifier
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger("field-verification-ml")
 
-app = FastAPI(title="Field Verification - Pretrained Colour Classifier")
+app = FastAPI(title="Field Verification - Dual-Model Vision Classifier (SigLIP + Custom)")
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
