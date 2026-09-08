@@ -3,7 +3,7 @@ import {
   Shield, Camera, MapPin, Clock, LogOut, Search, CheckCircle2,
   AlertTriangle, XCircle, FileText, RotateCcw, ChevronLeft,
   Fingerprint, Copy, Plus, Loader2, Check, User, Hash, Radio, ShieldCheck, ShieldX,
-  AlertOctagon,
+  AlertOctagon, Trash2,
 } from "lucide-react";
 import { api } from "./api.js";
 import LandingPage from "./LandingPage.jsx";
@@ -270,6 +270,13 @@ function LoginScreen({ onLogin }) {
   const [password, setPassword] = useState("");
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
+  const [deleteInputsAfterAuth, setDeleteInputsAfterAuth] = useState(true);
+
+  const clearInputs = () => {
+    setUserId("");
+    setPassword("");
+    setError("");
+  };
 
   const submit = async (e) => {
     e.preventDefault();
@@ -282,6 +289,10 @@ function LoginScreen({ onLogin }) {
     try {
       const { token, operator } = await api.login(userId.trim(), password);
       api.setToken(token);
+      if (deleteInputsAfterAuth) {
+        setUserId("");
+        setPassword("");
+      }
       onLogin(operator);
     } catch (err) {
       setError(err.message || "Sign in failed.");
@@ -300,24 +311,83 @@ function LoginScreen({ onLogin }) {
 
       <form className="login-form" onSubmit={submit}>
         <div className="field">
-          <label>Operator ID</label>
-          <input value={userId} onChange={(e) => { setUserId(e.target.value); setError(""); }} placeholder="e.g. R.SHARMA" autoComplete="off" />
+          <div className="field-label-row">
+            <label>Operator ID</label>
+            {userId && (
+              <button
+                type="button"
+                className="field-clear-inline"
+                onClick={() => setUserId("")}
+                title="Clear Operator ID"
+              >
+                Clear
+              </button>
+            )}
+          </div>
+          <input
+            value={userId}
+            onChange={(e) => { setUserId(e.target.value); setError(""); }}
+            placeholder="e.g. R.SHARMA"
+            autoComplete="off"
+          />
         </div>
         <div className="field">
-          <label>Password</label>
-          <input type="password" value={password} onChange={(e) => { setPassword(e.target.value); setError(""); }} placeholder="••••••••" />
+          <div className="field-label-row">
+            <label>Password</label>
+            {password && (
+              <button
+                type="button"
+                className="field-clear-inline"
+                onClick={() => setPassword("")}
+                title="Clear Password"
+              >
+                Clear
+              </button>
+            )}
+          </div>
+          <input
+            type="password"
+            value={password}
+            onChange={(e) => { setPassword(e.target.value); setError(""); }}
+            placeholder="••••••••"
+          />
         </div>
+
+        {/* Option to delete inputs after ID authentication */}
+        <label className="checkbox-field-option">
+          <input
+            type="checkbox"
+            checked={deleteInputsAfterAuth}
+            onChange={(e) => setDeleteInputsAfterAuth(e.target.checked)}
+          />
+          <span className="checkbox-field-text">
+            <span className="opt-title">Delete inputs after ID authentication</span>
+            <span className="opt-desc">Wipes credentials immediately upon successful sign-in</span>
+          </span>
+        </label>
+
         {error && <div className="form-error">{error}</div>}
         <button type="submit" className="btn btn-primary btn-block" disabled={busy}>
           {busy ? <Loader2 size={16} className="spin" /> : "Sign in"}
         </button>
-        <button
-          type="button"
-          className="btn-demo-fill"
-          onClick={() => { setUserId("R.SHARMA"); setPassword("Field@123"); setError(""); }}
-        >
-          ⚡ Autofill Demo Credentials (R.SHARMA)
-        </button>
+        <div className="login-actions-row">
+          <button
+            type="button"
+            className="btn-demo-fill"
+            onClick={() => { setUserId("R.SHARMA"); setPassword("Field@123"); setError(""); }}
+          >
+            ⚡ Autofill Demo
+          </button>
+          <button
+            type="button"
+            className="btn-delete-inputs"
+            onClick={clearInputs}
+            disabled={!userId && !password}
+            title="Delete entered credentials now"
+          >
+            <Trash2 size={12} /> Clear inputs
+          </button>
+        </div>
       </form>
 
       <p className="disclaimer">
@@ -1087,12 +1157,37 @@ const CSS = `
 }
 .login-form { width: 100%; display: flex; flex-direction: column; gap: 14px; margin-top: 12px; }
 .field { display: flex; flex-direction: column; gap: 6px; }
+.field-label-row { display: flex; justify-content: space-between; align-items: center; }
+.field-clear-inline { background: none; border: none; color: var(--muted); font-size: 11px; cursor: pointer; padding: 0; }
+.field-clear-inline:hover { color: #f87171; text-decoration: underline; }
 .field label { font-size: 12px; color: var(--muted); font-weight: 500; }
 .field input {
   background: var(--panel); border: 1px solid var(--line); border-radius: 10px;
   padding: 12px 14px; color: var(--text); font-size: 14.5px; font-family: inherit;
 }
 .field input:focus { outline: none; border-color: var(--teal); }
+
+.checkbox-field-option {
+  display: flex; align-items: flex-start; gap: 9px; padding: 9px 11px;
+  border-radius: 9px; background: rgba(255,255,255,0.03); border: 1px solid var(--line);
+  cursor: pointer; text-align: left;
+}
+.checkbox-field-option input { margin-top: 3px; accent-color: var(--teal); flex-shrink: 0; }
+.checkbox-field-text { display: flex; flex-direction: column; gap: 2px; }
+.opt-title { font-size: 11.5px; font-weight: 600; color: var(--text); }
+.opt-desc { font-size: 10.5px; color: var(--muted); line-height: 1.35; }
+
+.login-actions-row { display: flex; gap: 8px; margin-top: 2px; }
+.login-actions-row .btn-demo-fill { flex: 1.2; margin-top: 0; }
+.btn-delete-inputs {
+  flex: 1; display: inline-flex; align-items: center; justify-content: center; gap: 5px;
+  background: rgba(239, 68, 68, 0.08); border: 1px solid rgba(239, 68, 68, 0.22);
+  color: #f87171; border-radius: 8px; padding: 8px 10px; font-size: 11.5px; font-weight: 600;
+  cursor: pointer; transition: all 0.18s; font-family: inherit;
+}
+.btn-delete-inputs:hover:not(:disabled) { background: rgba(239, 68, 68, 0.18); border-color: #f87171; }
+.btn-delete-inputs:disabled { opacity: 0.35; cursor: not-allowed; }
+
 .form-error { color: var(--rust); font-size: 12.5px; }
 
 .home-screen { padding: 20px 18px 100px; gap: 4px; }
