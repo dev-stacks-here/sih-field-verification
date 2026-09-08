@@ -1,0 +1,17 @@
+services:
+  - type: web
+    name: field-verification-backend
+    runtime: node
+    plan: free
+    rootDir: sih-field-verification/backend
+    buildCommand: npm install
+    startCommand: node src/server.js
+    envVars:
+      - key: NODE_VERSION
+        value: 22.23.2
+      - key: JWT_SECRET
+        generateValue: true
+      - key: ML_SERVICE_URL
+        sync: false
+      - key: FRONTEND_URL
+        value: "*"
