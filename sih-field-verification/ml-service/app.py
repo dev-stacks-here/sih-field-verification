@@ -43,6 +43,7 @@ def startup():
 
 
 @app.get("/health")
+@app.get("/status")
 def health():
     return classifier.model_status()
 

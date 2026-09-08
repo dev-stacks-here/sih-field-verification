@@ -1,4 +1,8 @@
-const BASE_URL = import.meta.env.VITE_API_BASE_URL || "/api";
+let rawBase = (import.meta.env.VITE_API_BASE_URL || "/api").trim();
+if (rawBase.endsWith("/")) rawBase = rawBase.slice(0, -1);
+const BASE_URL = /^https?:\/\//i.test(rawBase) && !rawBase.endsWith("/api")
+  ? `${rawBase}/api`
+  : rawBase;
 const TOKEN_KEY = "fvs_token";
 
 function getToken() {

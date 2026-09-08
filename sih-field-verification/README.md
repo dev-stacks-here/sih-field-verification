@@ -112,6 +112,23 @@ uses the real camera and GPS; in a desktop browser without camera/GPS
 permissions it falls back to a simulated feed/location so the flow is still
 demoable.
 
+## Permanent Public Hosting & Docker
+
+The platform is fully containerized and production-ready for public hosting with HTTPS/SSL:
+
+- **100% Free Forever Cloud Setup**:
+  - **ML Service**: Hosted on **Hugging Face Spaces** (16 GB RAM free, Docker runtime).
+  - **Backend**: Hosted on **Render** (Node.js web service).
+  - **Frontend**: Hosted on **Vercel** or **Render Static Site** (Global CDN + automatic SSL).
+  - Ready-to-deploy blueprints: [`render.yaml`](render.yaml) and [`frontend/vercel.json`](frontend/vercel.json).
+- **1-Click Self-Hosted Stack (Docker Compose)**:
+  - Run all 3 services on any Linux VPS/cloud server with persistent SQLite volumes:
+    ```bash
+    docker compose up -d --build
+    ```
+
+👉 See [`DEPLOYMENT.md`](DEPLOYMENT.md) for the complete, step-by-step permanent hosting walkthrough.
+
 ## Reference colour card
 
 `docs/reference_colour_card.pdf` is print-ready — one A4 sheet with three

@@ -1,0 +1,78 @@
+version: '3.8'
+
+services:
+  # Machine Learning Vision & Forensic Anti-Spoofing Service (Python + SigLIP + 2D FFT)
+  ml-service:
+    build:
+      context: ./ml-service
+      dockerfile: Dockerfile
+    container_name: fvs-ml-service
+    restart: unless-stopped
+    environment:
+      - PORT=8000
+    ports:
+      - "8000:8000"
+    healthcheck:
+      test: ["CMD-SHELL", "python -c \"import urllib.request; urllib.request.urlopen('http://localhost:8000/status')\" || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+    networks:
+      - fvs-network
+
+  # Node.js Express Backend API (SQLite + Ed25519 Cryptographic Signatures)
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: fvs-backend
+    restart: unless-stopped
+    depends_on:
+      ml-service:
+        condition: service_started
+    environment:
+      - PORT=4000
+      - NODE_ENV=production
+      - JWT_SECRET=fvs_prod_secret_replace_with_your_own_secure_key
+      - ML_SERVICE_URL=http://ml-service:8000
+      - ML_SERVICE_TIMEOUT_MS=15000
+      - FRONTEND_URL=*
+      - DB_PATH=/app/data/field_verification.db
+      - UPLOADS_DIR=/app/uploads
+    ports:
+      - "4000:4000"
+    volumes:
+      - backend-data:/app/data
+      - backend-uploads:/app/uploads
+      - backend-keys:/app/keys
+    networks:
+      - fvs-network
+
+  # Frontend Vite React SPA served by Nginx with reverse proxy to backend
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+      args:
+        - VITE_API_BASE_URL=/api
+    container_name: fvs-frontend
+    restart: unless-stopped
+    depends_on:
+      - backend
+    ports:
+      - "80:80"
+    networks:
+      - fvs-network
+
+volumes:
+  backend-data:
+    driver: local
+  backend-uploads:
+    driver: local
+  backend-keys:
+    driver: local
+
+networks:
+  fvs-network:
+    driver: bridge

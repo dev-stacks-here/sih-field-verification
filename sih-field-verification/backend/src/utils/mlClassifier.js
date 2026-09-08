@@ -2,7 +2,7 @@ const sharp = require("sharp");
 const { VIAL_RECT, FRAME_W, FRAME_H } = require("./colorAnalysis");
 
 const ML_SERVICE_URL = process.env.ML_SERVICE_URL || "http://localhost:8000";
-const ML_TIMEOUT_MS = Number(process.env.ML_SERVICE_TIMEOUT_MS) || 4000;
+const ML_TIMEOUT_MS = Number(process.env.ML_SERVICE_TIMEOUT_MS) || 12000;
 
 // Sends only the cropped vial zone (same rectangle the heuristic classifier
 // samples, see colorAnalysis.js) to the pretrained model - not the whole

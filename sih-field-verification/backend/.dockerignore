@@ -1,0 +1,13 @@
+node_modules
+npm-debug.log
+.env
+data/*.db
+data/*.db-journal
+data/*.db-wal
+data/*.db-shm
+uploads/*
+!uploads/.gitkeep
+keys/private.pem
+keys/public.pem
+.git
+.DS_Store
