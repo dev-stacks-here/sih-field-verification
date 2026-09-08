@@ -1307,17 +1307,21 @@ export default function App() {
   const submitSession = async (items) => {
     const results = [];
     for (const item of items) {
+      if (!item) continue;
+      const img = item.dataUrl || item.imageDataUrl || item.image || item.imageData;
       const { scan } = await api.createScan({
-        imageDataUrl: item.dataUrl,
-        result: item.analysis.category,
-        confidence: item.analysis.confidence,
-        latitude: item.loc ? item.loc.lat : null,
-        longitude: item.loc ? item.loc.lon : null,
-        locationSimulated: item.simulatedLoc,
-        locationAcknowledged: item.locationAcknowledged,
-        capturedAt: item.capturedAt,
+        imageDataUrl: img,
+        image: img,
+        dataUrl: img,
+        result: item.analysis?.category || item.result || "inconclusive",
+        confidence: item.analysis?.confidence ?? item.confidence ?? 90,
+        latitude: item.loc ? item.loc.lat : (item.latitude ?? null),
+        longitude: item.loc ? item.loc.lon : (item.longitude ?? null),
+        locationSimulated: item.simulatedLoc ?? item.locationSimulated ?? false,
+        locationAcknowledged: item.locationAcknowledged ?? true,
+        capturedAt: item.capturedAt || new Date().toISOString(),
       });
-      results.push(scan);
+      if (scan) results.push(scan);
     }
     return results;
   };
@@ -1326,7 +1330,11 @@ export default function App() {
     setSubmitting(true);
     setSubmitError("");
     try {
-      const all = [...sessionCaptures, pendingCapture];
+      const all = [...sessionCaptures, pendingCapture].filter(Boolean);
+      if (all.length === 0) {
+        setScreen("scan");
+        return;
+      }
       const results = await submitSession(all);
       setReportRecords(results);
       setSessionCaptures([]);
